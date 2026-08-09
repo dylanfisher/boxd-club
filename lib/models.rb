@@ -93,6 +93,11 @@ class Club < Sequel::Model
 
   def watched_rounds = rounds_dataset.where(state: "watched").order(Sequel.desc(:watched_at))
 
+  # A club with no round yet has nothing to wait on — "the next round starts
+  # once the last film is logged" reads as a broken promise when there has
+  # never been a film. Until the first round opens, say so plainly.
+  def never_started? = rounds_dataset.empty?
+
   # Everything the club has been through, newest first. Skipped rounds belong
   # here too — "we picked this and dropped it" is history worth keeping.
   def past_rounds = rounds_dataset.where(state: Round::FINISHED).order(Sequel.desc(:opened_at))

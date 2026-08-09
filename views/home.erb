@@ -38,7 +38,9 @@
           </div>
 
           <p class="club-status">
-            <% if round.nil? %>
+            <% if round.nil? && club.never_started? %>
+              <span class="label">Not started.</span> Waiting for an admin to start the first round.
+            <% elsif round.nil? %>
               <span class="label">Nothing open.</span> The next round starts once the last film has been logged.
             <% elsif round.open? %>
               <span class="label"><%= round.label %> — voting.</span>
