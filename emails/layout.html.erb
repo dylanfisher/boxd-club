@@ -71,7 +71,8 @@
       margin: 0 auto !important;
       max-width: 600px;
       padding: 0;
-      padding-top: 24px;
+      padding-top: 40px;
+      padding-bottom: 40px;
       width: 600px;
     }
 
@@ -85,6 +86,29 @@
     /* -------------------------------------
     HEADER, FOOTER, MAIN
 ------------------------------------- */
+
+    /* The site's wordmark, set as text rather than as an image: an image would
+       need hosting, and most clients block it until the reader says otherwise.
+       Same weight, colours and blue dot as the header on the site. */
+    /* The spacing under it is on the cell, not here: a client that drops this
+       block still gets the gap. */
+    .header {
+      text-align: center;
+      width: 100%;
+    }
+
+    .wordmark {
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 27px;
+      font-weight: bold;
+      letter-spacing: -.02em;
+      text-decoration: none;
+    }
+
+    .wordmark .dot {
+      color: #40bcf4;
+    }
 
     .main {
       background: #1c2228;
@@ -261,7 +285,8 @@
       }
       .container {
         padding: 0 !important;
-        padding-top: 8px !important;
+        padding-top: 24px !important;
+        padding-bottom: 24px !important;
         width: 100% !important;
       }
       .main {
@@ -318,12 +343,25 @@
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body" bgcolor="#14181c" style="background-color:#14181c">
       <tr>
         <td>&nbsp;</td>
-        <td class="container">
+        <td class="container" style="padding-top:40px;padding-bottom:40px">
           <div class="content">
 
             <!-- START CENTERED CONTAINER -->
             <%# The line a client shows next to the subject in the list. %>
             <span class="preheader"><%= subject %></span>
+
+            <!-- START HEADER -->
+            <div class="header">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="text-align:center;padding-bottom:24px">
+                    <a href="<%= BASE_URL %>/" class="wordmark" style="color:#ffffff;font-size:27px;font-weight:bold;letter-spacing:-.02em;text-decoration:none">Boxd<span class="dot" style="color:#40bcf4">.</span>Club</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <!-- END HEADER -->
+
             <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main" bgcolor="#1c2228" style="background:#1c2228;border:1px solid #2c3440;border-radius:16px">
 
               <!-- START MAIN CONTENT AREA -->
