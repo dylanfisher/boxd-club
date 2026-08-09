@@ -183,6 +183,9 @@ class Round < Sequel::Model
 
   # Everyone who still owes a ballot.
   def pending_voters = club.voting_members.reject { |u| voter_ids.include?(u.id) }
+  # And everyone who's already in. Who's voted is as much use as who hasn't:
+  # if you're the last one left, the club is waiting on you alone.
+  def cast_voters = club.voting_members.select { |u| voter_ids.include?(u.id) }
   # Everyone who still owes a Letterboxd log entry for the winner.
   def pending_loggers = club.linked_members.reject { |u| logged_user_ids.include?(u.id) }
 

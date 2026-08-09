@@ -36,11 +36,18 @@
     <p class="dim">
       Opened <%= Fmt.date(round.opened_at) %> |
       <% pending = round.pending_voters %>
+      <% cast = round.cast_voters %>
       <% if pending.empty? %>
         Everyone's voted.
       <% else %>
         Open until everyone votes — still waiting on
         <%= pending.map(&:display_name).join(", ") %>.
+      <% end %>
+      <%# Both halves of the count, so nobody has to work out who's already in
+          by subtracting the waiting list from the membership. %>
+      <% if cast.any? && pending.any? %>
+        <br><%= cast.map(&:display_name).join(", ") %>
+        <%= cast.size == 1 ? "has" : "have" %> voted.
       <% end %>
     </p>
     <% if ballot_error %><p class="err"><%= ballot_error %></p><% end %>
@@ -350,8 +357,13 @@
   <% end %>
 <% else %>
   <section class="section">
-    <h2>Nothing open</h2>
-    <p class="dim">No round is running. A new one opens as soon as the last film has been logged by everyone.</p>
+    <% if club.never_started? %>
+      <h2>Not started</h2>
+      <p class="dim">This club hasn't played a round yet. It's waiting for an admin to start the first one.</p>
+    <% else %>
+      <h2>Nothing open</h2>
+      <p class="dim">No round is running. A new one opens as soon as the last film has been logged by everyone.</p>
+    <% end %>
   </section>
 <% end %>
 
