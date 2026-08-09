@@ -60,9 +60,10 @@ class Club < Sequel::Model
   MODE_NOTES = {
     "own" => "Films at least two of you already want, most-shared first — then " \
              "single-picks to fill the ballot, so nobody's odd choices vanish.",
-    "cross" => "Strict overlap: a film has to be on every single member's " \
-               "watchlist. Past a handful of people the overlap is usually empty, " \
-               "and then no ballot goes out.",
+    "cross" => "Strict overlap: a film has to be on every single watchlist — " \
+               "though members without one sit it out rather than emptying the " \
+               "overlap for everyone. Past a handful of people the overlap is " \
+               "usually empty, and then no ballot goes out.",
     "union" => "Anything on anyone's watchlist, drawn at random. Overlap counts " \
                "for nothing, so expect films only one of you has heard of.",
     "list" => "Ignores watchlists entirely and draws at random from one public " \

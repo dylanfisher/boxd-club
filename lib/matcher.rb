@@ -6,8 +6,9 @@
 #          film. Requiring a film on *everyone's* list is hopeless past a few
 #          people, so this ranks by overlap instead and backfills with
 #          single-member picks so obscure entries still surface.
-#   cross  only films on every member's watchlist. Strict: if the
-#          intersection is empty, no ballot.
+#   cross  only films on every watchlist. Strict: if the intersection is empty,
+#          no ballot. Members without a watchlist sit it out rather than
+#          emptying the intersection for everyone.
 #   union  everything on anyone's watchlist, chosen at random.
 #   list   one fixed Letterboxd list.
 #
@@ -62,10 +63,20 @@ module Matcher
   def from_source(club, user_ids, exclude:, limit:)
     case club.list_mode
     when "list"  then from_list(club, exclude: exclude, limit: limit)
-    when "cross" then scored(user_ids, exclude: exclude, threshold: user_ids.size, limit: limit)
+    when "cross" then cross(user_ids, exclude: exclude, limit: limit)
     when "union" then shuffled(user_ids, exclude: exclude, limit: limit)
     else              overlapping(user_ids, exclude: exclude, limit: limit)
     end
+  end
+
+  # 'cross' mode: on every watchlist. The intersection is taken over the members
+  # who actually have a watchlist, not every linked member — one empty list
+  # (never scraped, genuinely empty, or emptied by a fetch that died partway
+  # through) would otherwise make the intersection empty forever and quietly
+  # stop the club getting ballots at all.
+  def cross(user_ids, exclude:, limit:)
+    contributing = DB[:watchlist_entries].where(user_id: user_ids).distinct.select_map(:user_id)
+    scored(contributing, exclude: exclude, threshold: contributing.size, limit: limit)
   end
 
   # The default 'own' mode: prefer overlap, then backfill.

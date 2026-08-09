@@ -25,7 +25,7 @@ One process, one container, no Redis, no worker, no build step.
   | Mode | Icon | What it does |
   |---|---|---|
   | `own` (default) | ◍ | Films at least two members share, most-shared first, backfilled with single picks so obscure entries still surface |
-  | `cross` | ◎ | Only films on *every* member's watchlist. Empty intersection means no ballot |
+  | `cross` | ◎ | Only films on *every* watchlist — members without one sit it out. Empty intersection means no ballot |
   | `union` | ◌ | Anything on anyone's watchlist, drawn at random |
   | `list` | ▤ | One fixed Letterboxd list |
 
