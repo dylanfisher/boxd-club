@@ -11,6 +11,7 @@ require_relative "lib/invites"
 require_relative "lib/throttle"
 require_relative "lib/letterboxd"
 require_relative "lib/avatars"
+require_relative "lib/cache"
 require_relative "lib/quotes"
 require_relative "lib/fmt"
 require_relative "lib/email_previews" if APP_ENV == "development"
@@ -176,6 +177,21 @@ class App < Roda
         flash["notice"] = "Linked to #{username}. Your watchlist will be read again in a moment."
         r.redirect "/settings"
       end
+    end
+
+    # What we hold from Letterboxd, and how old it is. Read-only, and it fetches
+    # nothing — see lib/cache.rb.
+    r.get "cache" do
+      next r.redirect("/login") unless current_user
+
+      view("cache", locals: {
+             jobs: Cache.jobs,
+             watchlists: Cache.watchlists(current_user),
+             club_lists: Cache.club_lists(current_user),
+             films: Cache.films,
+             counts: Cache.film_counts,
+             policy: Cache.policy
+           })
     end
 
     r.post "logout" do

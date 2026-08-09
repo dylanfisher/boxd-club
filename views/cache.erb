@@ -1,0 +1,139 @@
+<%# What Boxd.Club holds from Letterboxd. Read-only, and the whole page is
+    written to make one thing plain: this is our copy, not Letterboxd. Every
+    list runs newest-first, because the only question anyone brings here is how
+    stale the copy has got. %>
+<nav>
+  <a href="/">Your clubs</a>
+  <span class="sep" aria-hidden="true">›</span>
+  <span>Letterboxd cache</span>
+</nav>
+
+<h1>Our Letterboxd cache</h1>
+
+<section class="section">
+  <p class="lede">This is Boxd.Club's own copy of public Letterboxd data &mdash; not Letterboxd itself.</p>
+  <p class="dim">
+    Letterboxd has no API for projects like this one, so we read the public pages
+    on a schedule and keep what we read: the films on each member's watchlist, a
+    little metadata for the films that reach a ballot, and a copy of each member's
+    profile picture. Ballots are built from this copy, never from a live request.
+    <a href="https://letterboxd.com/" target="letterboxd">Letterboxd</a> is always
+    the source of truth &mdash; if something below is wrong, it only means we
+    haven't read it again yet. Everything is listed newest first.
+  </p>
+</section>
+
+<section class="section">
+  <h2>Last sync</h2>
+  <p class="dim">When each scheduled job last ran. Nothing here runs when you load a page.</p>
+  <ul class="films">
+    <% jobs.each do |job| %>
+      <li>
+        <span class="title">
+          <%= job[:label] %>
+          <br>
+          <span class="meta">
+            <% if job[:last_run_at] %>
+              ran <%= Fmt.date(job[:last_run_at]) %> · <%= Fmt.ago(job[:last_run_at]) %>
+            <% else %>
+              hasn't run yet
+            <% end %>
+            · <%= job[:cadence] %>
+          </span>
+        </span>
+      </li>
+    <% end %>
+  </ul>
+</section>
+
+<section class="section">
+  <h2>Watchlists we hold</h2>
+  <p class="dim">
+    <%# The member list is scoped in lib/cache.rb — you see the people you share
+        a club with, which is the same set the club pages already name. %>
+    One row per <%= current_user.admin ? "member" : "member you share a club with" %>.
+    A watchlist is re-read once our
+    copy is more than <%= policy[:watchlists] %> days old, and profile pictures
+    about once a month.
+  </p>
+  <ul class="films">
+    <% watchlists.each do |row| %>
+      <li>
+        <%== render("avatar", locals: { user: row[:user] }) %>
+        <span class="title">
+          <% if row[:user].linked? %>
+            <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="letterboxd"><%= row[:user].letterboxd_username %></a>
+          <% else %>
+            <%= row[:user].display_name %>
+          <% end %>
+          <br>
+          <span class="meta">
+            <% if row[:fetched_at] %>
+              <%= Fmt.number(row[:films]) %> <%= row[:films] == 1 ? "film" : "films" %>
+              · read <%= Fmt.date(row[:fetched_at]) %> · <%= Fmt.ago(row[:fetched_at]) %>
+            <% elsif row[:user].linked? %>
+              nothing cached yet
+            <% else %>
+              no Letterboxd account linked, so there's nothing to read
+            <% end %>
+          </span>
+        </span>
+      </li>
+    <% end %>
+  </ul>
+</section>
+
+<% if club_lists.any? %>
+  <section class="section">
+    <h2>Club lists we hold</h2>
+    <p class="dim">Clubs that draw from one fixed Letterboxd list instead of watchlists.</p>
+    <ul class="films">
+      <% club_lists.each do |row| %>
+        <li>
+          <span class="title">
+            <a class="stretched" href="<%= row[:club].path %>"><%= row[:club].name %></a>
+            <br>
+            <span class="meta">
+              <%= Fmt.number(row[:films]) %> <%= row[:films] == 1 ? "film" : "films" %>
+              <% if row[:fetched_at] %>
+                · read <%= Fmt.date(row[:fetched_at]) %> · <%= Fmt.ago(row[:fetched_at]) %>
+              <% else %>
+                · nothing cached yet
+              <% end %>
+              <% if row[:club].list_url %>· <%= row[:club].list_owner %>/<%= row[:club].list_slug %><% end %>
+            </span>
+          </span>
+        </li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>
+
+<section class="section">
+  <h2>Films we've synced</h2>
+  <p class="dim">
+    <%= Fmt.number(counts[:total]) %> <%= counts[:total] == 1 ? "film" : "films" %> cached,
+    of which <%= Fmt.number(counts[:detailed]) %> also
+    <%= counts[:detailed] == 1 ? "has" : "have" %> director, rating and poster.
+    <%# Said plainly, because the gap between those two numbers looks like a bug
+        otherwise. It isn't: enriching every film on every watchlist would be
+        thousands of requests to a site doing us a favour. %>
+    A film joins this list the moment it appears on somebody's watchlist; the
+    rest of its details are only read once it reaches a ballot, and re-read
+    after <%= policy[:details] %> days.
+    <% if counts[:total] > films.size %>
+      Showing the <%= Fmt.number(films.size) %> most recently added.
+    <% end %>
+  </p>
+  <ul class="films">
+    <% films.each do |film| %>
+      <li>
+        <%# The list is ordered by when a film entered the cache, so that date has
+            to be on every row for the order to make sense. %>
+        <% note = "cached #{Fmt.ago(film.created_at)}" %>
+        <% note += film.details_fetched_at ? ", details read #{Fmt.ago(film.details_fetched_at)}" : ", title and year only so far" %>
+        <%== render("film", locals: { film: film, note: note }) %>
+      </li>
+    <% end %>
+  </ul>
+</section>

@@ -459,6 +459,9 @@
         </summary>
         <div class="menu">
           <a href="/settings">Settings</a>
+          <%# Not a settings page and not admin-only: it's the answer to "why is
+              a film I removed still on the ballot?", which anyone can ask. %>
+          <a href="/cache">Letterboxd cache</a>
           <%# Development only, and only for an admin: the email previews are a
               developer's tool, and /dev/emails 404s everywhere else anyway — a
               link to it in production would be a link to a 404. %>
