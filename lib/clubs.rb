@@ -9,22 +9,26 @@ module Clubs
 
   module_function
 
-  def create!(name:, list_mode: "own", list_url: nil, ballot_size: 5)
+  def create!(name:, list_mode: "own", list_url: nil, ballot_size: 5, auto_nudge: true)
     name = name.to_s.strip
     raise Invalid, "A club needs a name." if name.empty?
 
     slug = unique_slug(name)
-    club = Club.new(name: name, slug: slug, ballot_size: clamp_ballot_size(ballot_size))
+    club = Club.new(name: name, slug: slug, ballot_size: clamp_ballot_size(ballot_size),
+                    auto_nudge: auto_nudge ? true : false)
     apply_mode!(club, list_mode, list_url)
     club.save
     club
   end
 
-  def update!(club, name:, list_mode:, list_url: nil, ballot_size: nil)
+  def update!(club, name:, list_mode:, list_url: nil, ballot_size: nil, auto_nudge: nil)
     name = name.to_s.strip
     raise Invalid, "A club needs a name." if name.empty?
 
     club.name = name
+    # nil is "the caller isn't setting this"; the form always sends something,
+    # because an unticked checkbox posts nothing on its own.
+    club.auto_nudge = auto_nudge ? true : false unless auto_nudge.nil?
     # Blank means "leave it as it was" — the field is one of several on the
     # club form, and clearing it isn't a request to change the ballot.
     club.ballot_size = clamp_ballot_size(ballot_size) unless ballot_size.to_s.strip.empty?

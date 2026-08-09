@@ -267,7 +267,12 @@ module Rounds
     round
   end
 
+  # The automatic chase only. A club with auto_nudge off is never mailed by the
+  # scheduler — but the admin button still calls `nudge!` directly, because
+  # pressing it is a deliberate act rather than a standing policy.
   def maybe_nudge!(round)
+    return nil unless round.club.auto_nudge
+
     last = round.nudged_at || round.opened_at
     return nil if Time.now - last < NUDGE_DAYS * 86_400
 

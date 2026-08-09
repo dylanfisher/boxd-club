@@ -434,7 +434,8 @@ class App < Roda
               name: r.params["name"],
               list_mode: r.params["list_mode"],
               list_url: r.params["list_url"],
-              ballot_size: r.params["ballot_size"]
+              ballot_size: r.params["ballot_size"],
+              auto_nudge: r.params["auto_nudge"] == "1"
             )
             flash["notice"] = "Saved."
             r.redirect "/admin/clubs/#{club.slug}"

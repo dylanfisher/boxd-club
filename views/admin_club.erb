@@ -35,6 +35,16 @@
                 placeholder="https://letterboxd.com/user/list/name/"></p>
       <label for="ballot_size">Films per ballot</label>
       <p><input type="number" id="ballot_size" name="ballot_size" value="<%= club.ballot_size %>" min="2" max="10"></p>
+      <label>Reminders</label>
+      <%# An unticked box posts nothing, so the hidden field carries the "off"
+          and the checkbox overrides it when ticked. %>
+      <input type="hidden" name="auto_nudge" value="0">
+      <p class="dim">
+        <label>
+          <input type="checkbox" name="auto_nudge" value="1"<%= club.auto_nudge ? " checked" : "" %>>
+          Email people who haven't voted, every <%= Rounds::NUDGE_DAYS %> days
+        </label>
+      </p>
       <button type="submit">Save</button>
     </form>
   </div>
