@@ -30,7 +30,12 @@ class App < Roda
 
   plugin :render, engine: "erb", views: File.join(APP_ROOT, "views"),
                   layout: "layout", escape: true
-  plugin :sessions, secret: SESSION_SECRET, key: "boxd.session"
+  # Signing out is the only way to end a session. Roda would otherwise expire
+  # them at 30 days total / 7 days idle, and the cookie would default to
+  # browser-session lifetime and vanish on quit.
+  plugin :sessions, secret: SESSION_SECRET, key: "boxd.session",
+                    max_seconds: nil, max_idle_seconds: nil,
+                    cookie_options: { max_age: 10 * 365 * 86_400 }
   plugin :flash
 
   # The realistic CSRF failure here isn't an attack, it's someone opening a
