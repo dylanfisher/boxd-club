@@ -480,9 +480,3 @@ a bad migration can't wedge future deploys. A *brand-new* empty database
 bootstraps itself on first boot, so the first deploy doesn't crashloop.
 
 `/up` is the health check: it touches the database and returns plain text.
-
-### Still untested
-
-Drag-to-reorder on a real phone, a full round over real SMTP, and TMDB posters
-(no API key yet). Everything else has been walked by hand against real
-Letterboxd data — see the git history for what was checked when.
