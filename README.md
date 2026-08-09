@@ -11,9 +11,6 @@ Letterboxd, and the next round opens once everyone has.
 No accounts, no passwords, no public signup. Magic links are the entire auth
 model, for members and for the admin area alike.
 
-**Read [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) before deploying** — it lists what
-still needs your input and the judgment calls made along the way.
-
 ## Stack
 
 Ruby 4.0 · Roda · Sequel · SQLite (WAL) · Puma · rufus-scheduler · Nokogiri.
@@ -32,9 +29,8 @@ One process, one container, no Redis, no worker, no build step.
   | `union` | ◌ | Anything on anyone's watchlist, drawn at random |
   | `list` | ▤ | One fixed Letterboxd list |
 
-  The same wording lives in `Club::MODE_NOTES`. Admin prints it under the mode
-  picker; on the club page it's behind the marker next to the mode — the labels
-  alone read like three ways of saying "our watchlists".
+  The same wording lives in `Club::MODE_NOTES`, so admin and the club page can't
+  drift apart.
 - **Films don't repeat.** A film the club has settled on never comes back. A
   film that has merely *been on a ballot* is held back until every eligible film
   has had a turn — only when the pool runs dry do repeats return, longest-unseen
@@ -50,18 +46,28 @@ One process, one container, no Redis, no worker, no build step.
   film still counts as spent, so it isn't offered again.
 - **Rounds are numbered per club** — "round 5" — from `rounds.number`, assigned
   when the round opens and never reused. Every email about a round says which
-  one it is, the club page lists past rounds with their posters, and
-  `/club/:slug/round/:n` is a permalink to one: the winner, the final Borda
-  order, and what else was on the ballot.
+  one it is, and `/club/:slug/round/:n` is a permalink to it: the winner, the
+  final Borda order, and what else was on the ballot.
+- **A club has one open round.** Every transition that ends a round and opens
+  the next goes through `Rounds.claim!`, a conditional UPDATE that only one
+  caller can win, and `open!` takes SQLite's writer lock before re-checking. Two
+  skip votes landing together, or two admin buttons pressed at once, can't leave
+  a club with two ballots out.
 - **Every film reference** carries title, year, director and Letterboxd rating,
-  with a poster where we have one. A round that's been decided also shows the
-  film's wide backdrop still across the top of the page.
+  with a poster where we have one. A decided round also shows the film's wide
+  backdrop across the top of the page.
 - **Members have faces.** A member's Letterboxd profile picture appears beside
   their name wherever they're listed. Letterboxd's own uploads are downloaded
   once and re-served from `/avatars/…` rather than hotlinked; Gravatars, which
   are a CDN built for it, are linked as they are. See `lib/avatars.rb`.
-- **Dates** are written one way everywhere — `August 9, 2026`, from `Fmt.date`.
-  No template calls `strftime`.
+- **`/cache` says what we hold.** Every member can see our copy of Letterboxd —
+  which watchlists we have, how many films, how old each read is, and when the
+  scheduled jobs last ran — because "why is a film I removed still on the
+  ballot?" is a question with an answer. It fetches nothing; a member sees the
+  people they share a club with, an admin sees everyone (`lib/cache.rb`).
+- **Dates** are written one way everywhere — `August 9, 2026`, from `Fmt.date`,
+  with `Fmt.ago` beside it where staleness is the point. No template calls
+  `strftime`.
 - **Vertical rhythm** comes from one place: the `--space-*` scale in
   `views/layout.erb` and the `.section` rule that uses it. A page is a stack of
   `<section class="section">`, and adding one shouldn't mean writing a margin.
@@ -73,6 +79,8 @@ One process, one container, no Redis, no worker, no build step.
 ```
 /                         your clubs
 /login                    email → magic link
+/settings                 your Letterboxd username, and club email on or off
+/cache                    what we hold from Letterboxd, and how old it is
 /club/:slug               one club: mode, members, the open ballot, past rounds
 /club/:slug/round/:n      one past round
 /club/:slug/vote          POST — a ranked ballot
@@ -94,119 +102,67 @@ bundle exec rake "dry_run[demo]"    # print the ballot, change nothing
 bundle exec puma -p 9292
 ```
 
-`seed_demo` reads those four watchlists from the CSVs in
-`db/seeds/watchlists/`, so it needs no network and finishes in under a second.
-The files are Letterboxd's own export format, so you can drop a real
-`watchlist.csv` from letterboxd.com/settings/data/ in beside them. To go to
-Letterboxd instead: `rake "seed_demo[fetch]"` for one run, or
-`rake seed_fixtures` to re-scrape and rewrite the checked-in files.
+`seed_demo` reads four watchlists from the CSVs in `db/seeds/watchlists/`, so it
+needs no network and finishes in under a second. The files are Letterboxd's own
+export format, so you can drop a real `watchlist.csv` from
+letterboxd.com/settings/data/ in beside them. To go to Letterboxd instead:
+`rake "seed_demo[fetch]"` for one run, or `rake seed_fixtures` to re-scrape and
+rewrite the checked-in files.
 
 With `SMTP_HOST` unset, mail is logged to stdout rather than sent, and every
 invite prints its magic link, so you can walk the whole flow locally.
 
-`seed_demo` finishes by printing a sign-in link for each of the four accounts
-it creates. Paste one into a private window and you are that person. Nothing
-signs you in on its own — there is no development autologin — so a fresh window
-is always a logged-out stranger, and you are only the admin while holding the
-admin's link. They're real 60-day login tokens, the same thing the emails carry.
+### Being each member
 
-For a non-demo admin, or in any other environment: `rake admin[you@example.com]`,
-then open the printed link.
-
-### Testing a whole round as each member
-
-`seed_demo` gives you four members of the `demo` club:
-
-| Who | Letterboxd | Role |
-|---|---|---|
-| `demo@example.com` | deathproof | **admin** |
-| `alice@example.invalid` | schaffrillas | plain member |
-| `bob@example.invalid` | sidneyprescott | plain member |
-| `cara@example.invalid` | karsten | plain member |
-
-`seed_demo` prints all four sign-in links when it runs, and in development the
-tokens are fixed strings, so these are the actual links — paste them straight
-from here into a private window:
+`seed_demo` creates four members of the `demo` club and prints a sign-in link
+for each. In development the tokens are fixed strings, so these are the actual
+links — paste one into a private window and you are that person:
 
 ```
-http://localhost:9292/auth/dev-demo?to=/club/demo     demo@example.com   admin
+http://localhost:9292/auth/dev-demo?to=/club/demo     demo@example.com    admin
 http://localhost:9292/auth/dev-alice?to=/club/demo    alice, schaffrillas
 http://localhost:9292/auth/dev-bob?to=/club/demo      bob, sidneyprescott
 http://localhost:9292/auth/dev-cara?to=/club/demo     cara, karsten
 ```
 
-They keep working across re-seeds and restarts — `seed_demo` renews the same
-four rather than minting new ones — and they're valid for 60 days after the last
-seed. Drop the `?to=` to land on the home page instead.
+They survive re-seeds and restarts, and are valid for 60 days after the last
+seed. Guessable tokens are the point here and also the reason
+`Tokens.dev_login_url` raises unless `RACK_ENV=development`; everywhere else
+tokens are 256 random bits. For any other account, or a fresh unguessable link:
+`rake "link[bob@example.invalid,/club/demo]"`.
 
-Guessable tokens are the whole point here and also the reason
-`Tokens.dev_login_url` raises unless `RACK_ENV=development`. Everywhere else,
-tokens are 256 random bits. For any other account, or a fresh unguessable link
-for these:
+Nothing signs you in on its own — there is no development autologin — so a fresh
+private window is always a logged-out stranger. One session cookie per browser,
+so a private window per person is how you hold several at once.
 
-```bash
-bundle exec rake "link[bob@example.invalid,/club/demo]"
-```
+**Only `demo@example.com` is an admin.** As the other three there's no Admin
+link in the nav and `/admin` 403s, which is what an ordinary member sees. The
+seed is authoritative, so re-running it undoes a stray
+`rake admin[alice@example.invalid]`.
 
-**Only `demo@example.com` is an admin.** Signed in as the other three there is
-no Admin link in the nav, and `/admin` and `/admin/clubs/:slug` both return 403
-— what you see is what an ordinary member sees. The seed is authoritative about
-this, so re-running `seed_demo` undoes a stray `rake admin[alice@example.invalid]`.
-
-One session cookie per browser, so opening each member's link in the same window
-just replaces the last one. A private window per person is the way to hold
-several at once — and because nothing auto-signs-in, a private window that
-hasn't been given a link shows the login page, not somebody's clubs.
-
-A full round, start to finish:
+### Walking a round
 
 ```bash
-bundle exec rake "dry_run[demo]"   # what the ballot would be; changes nothing
-bundle exec rake advance           # actually open the round (or use /admin/clubs/demo)
+bundle exec rake "dry_run[demo]"          # what the ballot would be; changes nothing
+bundle exec rake advance                  # open the round (or use /admin/clubs/demo)
+bundle exec rake "demo_vote[demo]"        # vote as everyone but you, so yours decides it
+bundle exec rake "demo_vote[demo,all]"    # or vote it through and print the standings
+bundle exec rake "demo_next[demo]"        # close the round and open the next
 ```
 
-Then, for each member in turn: open their `rake link` URL, drag the ballot into
-order, and press **Submit ballot**. Watch for these as you go —
+`demo_vote` leaves `demo@example.com` — the admin you browse as — one ballot
+short, so submitting yours takes the real path: the tally, the winner on the
+club page and the result emails all happen for real rather than being faked.
+After submitting, that member's club page comes back read-only and a second
+submission is refused.
 
-- After submitting, that member's club page comes back read-only: no drag list,
-  no number menus, and a second submission is refused.
-- The round stays `open` until the *last* member votes, then decides in that
-  request — the club page shows the winner immediately and the result emails
-  are printed to the Puma log (with `SMTP_HOST` unset nothing is actually sent).
-- `rake clubs` shows where the round is; `/club/demo/round/:n` is the permalink
-  to it afterwards.
+`demo_next` is the admin page's **mark watched** button. A decided round normally
+waits for every member to log the film on Letterboxd, which you can't fake for
+accounts you don't own — so this is how you get back to a fresh ballot. Run it
+with `demo_vote` in between and you can walk several rounds in a minute, which
+is also how you watch previous winners drop off the ballot.
 
-### Skipping the other three
-
-Ranking five films in three private windows to reach the interesting part gets
-old. `demo_vote` casts a random ballot for every member who still owes one,
-leaving `demo@example.com` — the admin you browse as — so the round sits one
-ballot short:
-
-```bash
-bundle exec rake "demo_vote[demo]"        # opens a round if none is open
-```
-
-Then paste demo's link and submit yours. Yours is the deciding ballot, so the
-tally, the winner on the club page and the result emails all happen on the real
-path rather than being faked.
-
-```bash
-bundle exec rake "demo_vote[demo,all]"    # nobody left out: vote it through, print standings
-bundle exec rake "demo_next[demo]"        # close the round and open the next one
-```
-
-`demo_next` is the admin page's **mark watched** button. A decided round
-normally waits for every member to log the film on Letterboxd, which you can't
-fake for accounts you don't own — so this is how you get back to a fresh open
-ballot. Run it twice with `demo_vote` in between and you can walk several rounds
-in a minute, which is also how you see previous winners dropping off the ballot.
-
-To go back to being the admin, paste demo's link again (or mint one with
-`rake link[demo@example.com]`). Signing out just signs you out; nothing puts
-you back.
-
-If you'd rather not touch your dev data, point the app at a scratch copy:
+To work on a scratch copy instead of your dev data:
 
 ```bash
 cp db/boxd.db /tmp/scratch.db
@@ -216,21 +172,15 @@ DATABASE_URL=sqlite:///tmp/scratch.db bundle exec puma -p 9292
 ### Looking at the emails
 
 http://localhost:9292/dev/emails lists every email the app sends, each rendered
-from fixtures — Rails' mailer previews, for this app. A preview shows both parts
-of the message: the HTML part in a frame of its own, so only the email's own
-styles act on it, and the text part as it goes out (it's a real part of every
-message, not a fallback). `/dev/emails/:name/html` and `/dev/emails/:name/text`
-are the bare parts, for looking at the source or pasting into a client.
+from fixtures — Rails' mailer previews, for this app. A preview shows both parts:
+the HTML part in a frame of its own, so only the email's own styles act on it,
+and the text part as it goes out (a real part of every message, not a fallback).
+`/dev/emails/:name/html` and `/dev/emails/:name/text` are the bare parts.
 
 In development, signed in as an admin, there's an **Email previews** link in the
-header dropdown — the same menu as **Sign out** — so you can get there from
-whatever page you're on. Plain members don't see it, and neither does anyone
-under another `RACK_ENV`, where the link would only lead to a 404.
-
-All nine names sit in one row, in the same place on the index and on every
-preview (`views/email_preview_nav.erb`) — the one you're reading is marked
-rather than dropped from the row — so clicking through them never moves the
-link you want next.
+header dropdown. Plain members don't see it, and neither does anyone under
+another `RACK_ENV`, where the routes 404 and `lib/email_previews.rb` isn't even
+loaded.
 
 Nine previews, because several templates have a branch worth seeing:
 
@@ -244,15 +194,11 @@ Nine previews, because several templates have a branch worth seeing:
 
 The fixtures are unsaved model objects (`lib/email_previews.rb`), so a preview
 needs no club, no round and no member, renders the same on an empty database,
-and can't send or write anything — it renders the templates directly rather than
-going through `Mailer.deliver`. The links inside are dead strings, not tokens.
-One fixture film is deliberately left without a director or a rating and the
-last poster is deliberately missing, so the previews show what a film the
-enricher hasn't reached yet does to the layout; the posters that are there are
-borrowed from whatever films your local database has.
-
-The routes are development only: `/dev/emails` is a 404 under any other
-`RACK_ENV`, and `lib/email_previews.rb` isn't even loaded.
+and can't send or write anything. The links inside are dead strings, not tokens.
+One fixture film is deliberately missing a director and rating and another its
+poster, so the previews show what a film the enricher hasn't reached does to the
+layout. Previews follow `Mailer.unsubscribable?`, so the two that carry no
+unsubscribe footer don't show one.
 
 ## Rake tasks
 
@@ -272,10 +218,10 @@ The routes are development only: `/dev/emails` is a 404 under any other
 | `dry_run[club_slug]` | Build a ballot and print it — no round, no email |
 | `enrich[n]` | Backfill director/rating/poster/backdrop for films missing them |
 | `avatars` | Fetch everyone's Letterboxd profile picture now, ignoring freshness |
-| `seed_demo` | A demo club on real public watchlists, for local tuning — offline; `seed_demo[fetch]` scrapes instead |
+| `seed_demo` | A demo club on real public watchlists — offline; `seed_demo[fetch]` scrapes instead |
 | `seed_fixtures` | Re-scrape the demo watchlists and rewrite `db/seeds/watchlists/*.csv` |
-| `demo_vote[slug]` | Vote as everyone but you, so the round is one ballot from a result; `[slug,all]` votes it through |
-| `demo_next[slug]` | Close the current round without waiting on Letterboxd logs, opening the next |
+| `demo_vote[slug]` | Vote as everyone but you; `[slug,all]` votes it through |
+| `demo_next[slug]` | Close the current round without waiting on Letterboxd logs |
 
 ## How the pieces fit
 
@@ -283,20 +229,23 @@ The routes are development only: `/dev/emails` is a 404 under any other
 config/boot.rb      DB connect + PRAGMAs, mail config
 config/schedule.rb  rufus cron, loaded only when ENABLE_SCHEDULER=1
 app.rb              routes only
+lib/models.rb       the Sequel models, and what "reachable" means
 lib/letterboxd.rb   watchlists, lists, film pages, avatars, "have they logged it?"
 lib/tmdb.rb         poster and backdrop URLs (optional API key)
 lib/films.rb        director / rating / poster / backdrop, filled in lazily
 lib/avatars.rb      members' profile pictures: downloaded, or Gravatar links
-lib/fmt.rb          the one date format
+lib/cache.rb        what /cache reads back — nothing here fetches
+lib/fmt.rb          the one date format, "3 days ago", thousands separators
 lib/matcher.rb      candidate selection per club mode, and not repeating films
 lib/clubs.rb        club CRUD and membership
 lib/invites.rb      invites and sign-in links
-lib/rounds.rb       open! / advance! / tally! / check_logs!
+lib/rounds.rb       open! / advance! / tally! / check_logs! / claim!
 lib/votes.rb        ranked ballots + Borda count
 lib/tokens.rb       magic links (SHA256-hashed, raw value never stored)
+lib/throttle.rb     sliding-window limits on the forms that can send mail
 lib/mailer.rb       multipart text + HTML, and the only-known-recipients guard
-lib/taglines.rb     the rotating line on the sign-in page
-lib/lost_quotes.rb  the rotating line on a 404
+lib/email_previews.rb  fixtures for /dev/emails (development only)
+lib/quotes.rb       the film line under the sign-in form and the error pages
 lib/backup.rb       nightly VACUUM INTO, 7-day rotation
 ```
 
@@ -315,48 +264,63 @@ A tally doesn't wait for `advance`: the last ballot submitted decides the round
 in the request that submits it, and the result emails go out on a background
 thread so nobody waits on SMTP.
 
-Both scraping jobs run at the background pace (see below), so "Daily 08:00"
-means the first request goes out somewhere in the following 45 minutes and the
-last one can be an hour after that. Nothing downstream cares when they finish.
+Both scraping jobs run at the background pace (below), so "Daily 08:00" means
+the first request goes out somewhere in the following 45 minutes and the last
+can be an hour after that. Nothing downstream cares when they finish.
+
+Every job is wrapped in a `guard` that logs and swallows exceptions — an
+uncaught error in a rufus thread dies silently otherwise — and takes an atomic
+claim against `job_runs` first, so redeploying doesn't re-fire it. `TZ` must be
+set or "8am" becomes midnight Pacific inside a UTC container.
 
 ### When mail goes out
 
-Five templates, and nothing else sends. Only one of them — `nudge` — is on a
-timer; the rest are sent in the same breath as the thing that caused them.
+Five templates, and nothing else sends. Only `nudge` is on a timer; the rest go
+out in the same breath as the thing that caused them.
 
 | Email | Sent when | Cadence |
 |---|---|---|
 | `invite` | An admin invites someone (`/admin`, `rake invite`, `rake admin`) | Once per invite, immediately. The verify link lasts 14 days (`Tokens::VERIFY_TTL`) |
-| `login` | Someone asks for a link at `/login` | One per request, immediately. Nothing is sent for an unknown or unsubscribed address — the page says the same thing either way |
+| `login` | Someone asks for a link at `/login` | One per request, immediately. Nothing is sent for an address we don't have — the page says the same thing either way |
 | `ballot` | A round opens, to every voting member | Once per round |
 | `nudge` | `advance` finds an open round with people who still owe a ballot | At most once every 6 days per round (`Rounds::NUDGE_DAYS`), indefinitely — a round has no deadline |
 | `result` | A round is decided, to every voting member | Once per round |
 
-What actually triggers a round to open — and so the ballots — is one of: the
-previous round being logged by everyone, a skip vote carrying, an admin
-pressing "mark watched", or `advance` finding a club with no round at all. Only
-the last of those waits for the 4-hourly tick.
-
-`result` is sent from the request that submits the deciding ballot, on a
-background thread, so the last voter doesn't sit through the SMTP round-trips.
-An admin forcing a tally sends it inline instead.
+What triggers a round to open — and so the ballots — is one of: the previous
+round being logged by everyone, a skip vote carrying, an admin pressing "mark
+watched", or `advance` finding a club with no round at all. Only the last waits
+for the 4-hourly tick.
 
 Nudge timing is measured from `nudged_at || opened_at` and is only *checked* by
 `advance`, so the first reminder lands 6 days after the round opened plus up to
 4 hours plus the job's random start offset. The admin page's nudge button
 ignores the throttle entirely — pressing it twice sends twice.
 
-Recipients always come from `club.voting_members`, which is `reachable`
-(active, verified, not unsubscribed), so unsubscribing takes you out of every
-automated email at once. `Mailer.deliver` will only mail an address that
-belongs to a saved user, so no form can make this server mail a stranger. Every
-message carries a fresh single-use unsubscribe link and RFC 8058
-`List-Unsubscribe` headers.
+Recipients come from `club.voting_members`, which is `reachable` (active,
+verified, not unsubscribed), so unsubscribing takes you out of every automated
+email at once. `Mailer.deliver` will only mail an address that belongs to a
+saved user, so no form can make this server mail a stranger.
 
 Two things switch the whole lot off: with `ENABLE_SCHEDULER` unset there is no
 `advance`, so no nudges and no automatic round opening; with `SMTP_HOST` unset
-mail is written to the log rather than sent, which is how local development and
-`rake dry_run` work.
+mail is written to the log rather than sent.
+
+### Unsubscribing, and the way back
+
+Club mail — `invite`, `ballot`, `nudge`, `result` — carries a fresh single-use
+unsubscribe link and RFC 8058 `List-Unsubscribe` headers, both of them or
+neither. `login` doesn't, and is the only exception (`Mailer::TRANSACTIONAL`):
+it's the one message someone requests seconds before it arrives, and Gmail puts
+the unsubscribe button next to the sender name, where it's easy to hit instead
+of the link you came for. An invite goes to an address that never asked us for
+anything, so it keeps its way out — the alternative is the spam button, and that
+report costs the sending domain.
+
+Unsubscribing is reversible. It stops club mail; it doesn't close the account,
+so `/login` still mails a sign-in link to someone who has unsubscribed —
+otherwise the only door in is locked and the page, which deliberately says the
+same thing either way, can't explain why. **Email** on `/settings` turns club
+mail back on.
 
 ### How hard we hit Letterboxd
 
@@ -385,17 +349,18 @@ What we deliberately *don't* fetch:
 - club lists refreshed inside the same window;
 - full watchlists at signup — `check` reads page 1 only, to confirm the account
   is public and non-empty;
-- film pages for anything that hasn't reached a ballot (see "Films are enriched
-  lazily" in OPEN_QUESTIONS.md);
+- film pages for anything that hasn't reached a ballot: a few thousand films sit
+  on the watchlists and a handful reach a ballot, so details are filled in there
+  and re-read after 90 days (`Films::REFRESH_AFTER`);
 - anything at all for a member already recorded as having logged the winner.
 
 `LETTERBOXD_NO_DELAY=1` skips every deliberate sleep, for local dry runs.
 
-Every job is wrapped in a `guard` that logs and swallows exceptions — an
-uncaught error in a rufus thread dies silently otherwise. Every job takes an
-atomic claim against `job_runs` first, so redeploying doesn't re-fire it.
-
-`TZ` must be set or "8am" becomes midnight Pacific inside a UTC container.
+Letterboxd being unreachable is never our bug and never a 500:
+`Letterboxd::TRANSPORT_ERRORS` is the single list of ways a request can fail —
+refused, hung, bad certificate, challenge page — and every call site rescues it
+and carries on with what we already hold. `NotFound` and `RateLimited` descend
+from it, so rescue those first where they mean something.
 
 ### Auth
 
@@ -426,30 +391,24 @@ server until Submit ballot is pressed. With JS off, the number menus are the
 form and the same button submits it.
 
 **A ballot is final once submitted.** The last ballot in closes the round on the
-spot, so a later edit could contradict a result that has already been decided and
-mailed out. `Votes.record_ranking!` refuses a second ballot from the same user,
+spot, so a later edit could contradict a result that has already been decided
+and mailed. `Votes.record_ranking!` refuses a second ballot from the same user,
 and the club page shows a submitted ballot read-only. Changing a vote means an
-admin forcing the round along from `/admin/clubs/:slug`.
-
-The server validates that a submitted ballot is exactly a 1..n permutation of
-*that round's* candidates, then writes the whole set in one transaction.
+admin forcing the round along from `/admin/clubs/:slug`. The server validates
+that a ballot is exactly a 1..n permutation of *that round's* candidates, then
+writes the whole set in one transaction.
 
 ### Knowing when someone has watched it
 
 `letterboxd.com/{user}/film/{slug}/` returns 200 once they have a diary entry,
 review or rating for the film, and 404 otherwise — a film merely sitting on
 their watchlist 404s. That's the whole mechanism. One request per member who
-hasn't been seen logging it yet, four times a day at most.
+hasn't been seen logging it yet, four times a day at most. Members without a
+Letterboxd account still vote; they're just not waited on.
 
-Members without a Letterboxd account still vote; they're just not waited on.
-
-### Nudges
-
-`advance` mails whoever still owes a ballot, at most once every six days
-(`Rounds::NUDGE_DAYS`). The admin page has a button that does the same thing
-immediately and ignores the throttle — pressing it twice really does send twice.
-See "When mail goes out" above for how that sits alongside the other four
-emails.
+The admin page's **check** button does the same thing on a background thread,
+because a Letterboxd that hangs rather than refuses is 45 seconds of timeout per
+member. It says so, and the page is worth reloading a minute later.
 
 ### Look
 
@@ -460,40 +419,35 @@ and blue on hover. Every hover rule is inside
 `@media (hover: hover) and (pointer: fine)` so nothing sticks half-hovered after
 a tap on a phone.
 
-Every link that leaves the site — film titles, member profiles, a club's source
-list, the footer — carries `target="letterboxd"`, so they all share one tab.
-Click through five films and you get one Letterboxd tab that moves, not five,
-and the ballot you were part-way through is still open behind it. Deliberately
-*without* `rel="noopener"`: noopener forces a fresh context and ignores the
-target name, so it would defeat the shared tab entirely. The trade is that
-letterboxd.com can see `window.opener` — it can navigate our tab but not read
-it, and Letterboxd is the one third party this app is built on.
+Every link that leaves the site carries `target="letterboxd"`, so they all share
+one tab: click through five films and you get one Letterboxd tab that moves, not
+five, with the ballot you were part-way through still open behind it.
+Deliberately *without* `rel="noopener"`, which forces a fresh context and
+ignores the target name. The trade is that letterboxd.com can see
+`window.opener` — it can navigate our tab but not read it, and Letterboxd is the
+one third party this app is built on.
 
 The emails are [Lee Munroe's responsive email
 template](https://github.com/leemunroe/responsive-html-email-template) in the
 site's colours — a 600px card on a dark page, one green call-to-action, a grey
-footer with the unsubscribe link. `emails/layout.html.erb` is his skeleton and
-stylesheet with our palette dropped in (`#14181c` page, `#1c2228` card,
-`#2c3440` border, `#d8e0e8` text, `#8b9aa8` meta, `#00c030` button on `#06240e`
-lettering, `#40bcf4` links); every `emails/*.html.erb` is only the body that
-goes inside it, and `Mailer.button` is the one call-to-action so five templates
-don't each carry Outlook's version of a rounded rectangle.
+footer. `emails/layout.html.erb` is his skeleton and stylesheet with our palette
+dropped in (`#14181c` page, `#1c2228` card, `#2c3440` border, `#d8e0e8` text,
+`#8b9aa8` meta, `#00c030` button under `#06240e` lettering, `#40bcf4` links);
+every `emails/*.html.erb` is only the body that goes inside it, and
+`Mailer.button` is the one call-to-action so five templates don't each carry
+Outlook's version of a rounded rectangle.
 
 Colours are set twice — in the layout's `<style>` block and inline on the
 elements that carry them. Gmail keeps embedded styles, but the clients that drop
 them would otherwise leave pale text on a white background. The head keeps his
 Outlook/iOS fixes and his one media query verbatim; `color-scheme: dark` asks
-clients not to invert a design that's already dark. Nothing here is inlined by a
-build step: what's in the file is what goes out.
-
-The text parts are untouched by any of this, and they're the ones that always
-render. `/dev/emails` is where you look at both.
+clients not to invert a design that's already dark. Nothing is inlined by a
+build step: what's in the file is what goes out. The text parts are untouched by
+any of this, and they're the ones that always render.
 
 ## Deploy
 
 ```bash
-git add -A && git commit -m "initial"
-
 dokku apps:create boxd-club
 dokku storage:ensure-directory boxd-club
 dokku storage:mount boxd-club /var/lib/dokku/data/storage/boxd-club:/app/db
@@ -525,77 +479,10 @@ Migrations run by hand — `dokku run boxd-club bundle exec rake db:migrate` —
 a bad migration can't wedge future deploys. A *brand-new* empty database
 bootstraps itself on first boot, so the first deploy doesn't crashloop.
 
-## Verified
+`/up` is the health check: it touches the database and returns plain text.
 
-Checked by hand on 2026-08-08 against real Letterboxd data:
+### Still untested
 
-- Scrape: 183 films across 8 pages in ~3s; a 30-film public list; film pages for
-  director, Letterboxd rating, TMDB id and poster
-- `logged?` — true for a film in a member's diary, false for one on their
-  watchlist, across four different slugs
-- Full lifecycle: open → two of three ballots → nothing decided → last ballot →
-  decided with the right Borda standings → logs checked → marked watched → next
-  round opened, with the previous winner excluded from it
-- All four club modes produce the ballots you'd expect (`cross` correctly finds
-  the one film all three shared, and correctly finds nothing once it has won)
-- Web: sign-in link → club page → ballot → submit; a second ballot from the same
-  user is refused and changes nothing; duplicate ranks rejected with nothing
-  persisted; expired CSRF renders 403
-- Permissions: anonymous redirects to /login, non-member gets 403, non-admin
-  gets 403 on /admin, unknown club 404s
-- Invite → verify → username validation (nonexistent account, private
-  watchlist, duplicate account) → signed in; the verify token then refuses reuse
-- Admin: create a list-mode club from a real Letterboxd list URL, invite a
-  member, open a round off that list
-- Nudges fire once and don't repeat inside six days
-
-Checked on 2026-08-08 against a throwaway database, driving the real Rack app:
-
-- `/club/:slug` serves; `/c/:slug` 301s to it; `/club/:slug/round/1` renders and
-  an unknown round number 404s
-- Submitting a ballot persists all five ranks and redirects; the page comes back
-  read-only ("this is final", no form, no menus) and a second POST is refused
-  with the first ballot intact; the round still closes on the last ballot and
-  the winner is the Borda leader
-- The nudge button reports 0 when everyone has voted and mails everyone
-  outstanding otherwise, twice in a row, with no throttle
-- `Mailer.deliver` refuses an unsaved user and refuses an address that isn't the
-  given user's; `/login` with an unknown address still sends nothing
-- Round numbering survives a full round: round 1 watched → round 2 opened, and
-  the club page links back to round 1
-- Testing as each member (against a copy of the dev database): `rake link` signs
-  in as alice, bob and cara; each one's club page carries no admin link at all
-  and both `/admin` and `/admin/clubs/demo` 403 for them, while the demo admin
-  still gets 200 on both; each votes once, the form goes read-only, and the
-  fourth and last ballot flips the round to `decided` with a winner
-- The 404 page shows a different film line per load and no longer repeats the
-  wordmark; the 403, expired-link, unsubscribed and CSRF pages all still render
-  with their message as the heading
-- The four `dev-*` links in this README each sign in as the right person, still
-  work after a re-seed, and `dev_login_url` refuses to run with
-  `RACK_ENV=production`
-- No autologin: a browser with no cookie gets the login page at `/` and is
-  redirected away from `/admin` and `/club/demo`; pasting each seeded link makes
-  you exactly that person (demo → admin links and `/admin` 200; alice, bob and
-  cara → no admin links and `/admin` 403); signing out returns the login page
-  and stays there
-- Outbound links share one tab: clicking a film, then a member, then another
-  film in a real browser leaves two tabs open in total, the second re-navigating
-  each time, with the club page untouched behind it; internal links stay put
-
-- Email previews: all nine render both parts (`/dev/emails`, each preview page,
-  and both bare parts, 200 each); an unknown name and `/dev/emails/:name/xml`
-  404; the whole tree 404s under `RACK_ENV=production`; every HTML part comes
-  out wrapped in the layout — doctype first byte, the subject in the `<title>`
-  and the preheader, the card, the green button, the footer's unsubscribe link
-- A real `Mailer.deliver` (with the test transport) still builds both parts, and
-  the HTML one is the same layout the preview shows
-- The **Email previews** link is in the header dropdown on every page for the
-  demo admin, absent for alice/bob/cara, absent logged out, and absent under
-  `RACK_ENV=production`
-
-Not yet verified: the restyled pages in an actual browser (no browser available
-in this session — the markup and CSS were not eyeballed, and neither were the
-email preview pages, whose responses were only checked over HTTP), drag-to-reorder on a
-real phone, the CSV backend against a real export, a full round over real SMTP,
-and TMDB posters (no API key yet).
+Drag-to-reorder on a real phone, a full round over real SMTP, and TMDB posters
+(no API key yet). Everything else has been walked by hand against real
+Letterboxd data — see the git history for what was checked when.
