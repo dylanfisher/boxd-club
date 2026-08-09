@@ -1,0 +1,13 @@
+<%# Every email, in one horizontal row, rendered identically on the index and on
+    each preview — including the one you're looking at, which is marked rather
+    than dropped. Nothing moves as you click through. `current` is nil on the
+    index. A plain <nav>: the layout already lays one out as a wrapping row. %>
+<nav>
+  <% previews.each do |p| %>
+    <% if p[:name] == current %>
+      <strong aria-current="page"><%= p[:name] %></strong>
+    <% else %>
+      <a href="/dev/emails/<%= p[:name] %>"><%= p[:name] %></a>
+    <% end %>
+  <% end %>
+</nav>

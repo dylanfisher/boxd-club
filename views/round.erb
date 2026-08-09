@@ -1,0 +1,65 @@
+<%# One past round: the ballot as it was, who won, and the final order. %>
+<% winner = round.winning_film_id ? Film[round.winning_film_id] : nil %>
+<% if winner&.backdrop_url %>
+  <div class="backdrop"><img src="<%= winner.backdrop_url %>" alt=""></div>
+<% end %>
+
+<nav>
+  <a href="/">All clubs</a>
+  <span class="sep" aria-hidden="true">›</span>
+  <a href="<%= club.path %>"><%= club.name %></a>
+</nav>
+
+<h1><%= club.name %> — <%= round.label.downcase %></h1>
+
+<section class="section">
+  <p class="dim">
+    Opened <%= Fmt.date(round.opened_at) %><%
+    %><% if round.decided_at %> · decided <%= Fmt.date(round.decided_at) %><% end %><%
+    %><% if round.watched_at %> · watched by everyone <%= Fmt.date(round.watched_at) %><% end %><%
+    %><% if round.skipped_at %> · skipped by vote <%= Fmt.date(round.skipped_at) %><% end %><%
+    %><% if round.random_pick %> · nobody voted, so it was picked at random<% end %>.
+  </p>
+</section>
+
+<% if winner %>
+  <section class="section">
+    <h2><%= round.skipped? ? "Picked, then skipped" : "Winner" %></h2>
+    <ul class="films"><li><%== render("film", locals: { film: winner, big: true }) %></li></ul>
+  </section>
+<% elsif round.open? %>
+  <section class="section">
+    <p class="dim">This round is still open. <a href="<%= club.path %>">Vote on the club page.</a></p>
+  </section>
+<% end %>
+
+<% if standings.any? %>
+  <section class="section">
+    <h2>Final order</h2>
+    <p class="dim">Borda count — a first pick scored <%= standings.size %>, a last pick 1.</p>
+    <ol class="films">
+      <% standings.each_with_index do |row, i| %>
+        <li>
+          <span class="pos"><%= i + 1 %>.</span>
+          <%== render("film", locals: {
+                film: row[:film],
+                note: "#{row[:points]} points#{row[:firsts].positive? ? ", #{row[:firsts]} first-place" : ''}"
+              }) %>
+        </li>
+      <% end %>
+    </ol>
+  </section>
+<% else %>
+  <section class="section">
+    <h2>On the ballot</h2>
+    <p class="dim">No votes were recorded for this round.</p>
+    <ol class="films">
+      <% candidates.each do |cand, film| %>
+        <li>
+          <span class="pos"><%= cand.position %>.</span>
+          <%== render("film", locals: { film: film, note: "#{cand.match_count} on watchlists" }) %>
+        </li>
+      <% end %>
+    </ol>
+  </section>
+<% end %>

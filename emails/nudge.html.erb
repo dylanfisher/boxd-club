@@ -1,0 +1,17 @@
+<p class="eyebrow" style="color:#8b9aa8;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px"><%= round.label %></p>
+<p style="color:#d8e0e8"><strong><%= club.name %></strong> is waiting on you. The round can't close until everyone has ranked these — <%= waiting_on %> of us still haven't.</p>
+<%# No posters here: this one is a reminder, and the ballot email already sent
+    the art. Same row shape as the ballot, minus the poster cell. %>
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="film">
+  <% candidates.each_with_index do |(_cand, film), i| %>
+    <tr>
+      <td class="rank" style="color:#8b9aa8;padding:0 8px 16px 0;vertical-align:top"><%= i + 1 %>.</td>
+      <td style="padding:0 0 16px;vertical-align:top;color:#d8e0e8">
+        <strong><%= film.title %></strong><% if film.year %>
+          <span class="meta" style="color:#8b9aa8"><%= film.year %></span><% end %><br>
+        <span class="meta" style="color:#8b9aa8;font-size:14px"><% if film.director %>dir. <%= film.director %><% end %><% if film.rating %> · ★ <%= film.rating_display %><% end %></span>
+      </td>
+    </tr>
+  <% end %>
+</table>
+<%= Mailer.button(club_url, "Rank them") %>

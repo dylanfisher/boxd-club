@@ -1,0 +1,21 @@
+<%= club.name %>, <%= round.label.downcase %>
+<%= "=" * (club.name.length + round.label.length + 2) %>
+
+<%= candidates.size %> films, picked from what <%= member_count %> of us have on our watchlists.
+
+<% candidates.each_with_index do |(cand, film), i| -%>
+  <%= i + 1 %>. <%= film.display %> — <%= cand.match_count %> of us want it
+<% end -%>
+
+Rank them here:
+<%= club_url %>
+
+There's no deadline. The round stays open until everyone has voted, and the
+film with the most points wins the moment the last ballot lands.
+<% unless stale.empty? -%>
+
+Heads up: we couldn't refresh <%= stale.join(", ") %>'s watchlist recently, so this ballot may be out of date.
+<% end -%>
+
+--
+Unsubscribe: <%= unsub_url %>

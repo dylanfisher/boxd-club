@@ -1,0 +1,31 @@
+<%# A round the club has finished with, as one card that is entirely a link to
+    that round.
+
+    The film is described the same way it is everywhere else — poster, title,
+    year, director, rating — but the link goes to the round rather than to
+    Letterboxd, because that's what the card is about. %>
+<% film = round.winning_film_id ? Film[round.winning_film_id] : nil %>
+<li class="card-link">
+  <% if film&.poster_url %>
+    <img class="poster big" src="<%= film.poster_url %>" alt="" loading="lazy" width="70" height="105">
+  <% end %>
+  <span class="title">
+    <a class="stretched" href="<%= round.path %>"><%
+      %><%= round.label %><%= film ? ": #{film.title}" : "" %></a><% if film&.year %>
+      <span class="year"><%= film.year %></span><% end %>
+    <br>
+    <span class="meta">
+      <% if film&.director %>dir. <%= film.director %><% end %>
+      <% if film&.rating %><span class="rating">★ <%= film.rating_display %></span><% end %>
+      <% if film&.director || film&.rating %>·<% end %>
+      <% if round.skipped? %>
+        skipped <%= Fmt.date(round.skipped_at) %>
+      <% elsif round.watched_at %>
+        watched <%= Fmt.date(round.watched_at) %>
+      <% else %>
+        opened <%= Fmt.date(round.opened_at) %>
+      <% end %>
+      <% if round.random_pick %> · picked at random<% end %>
+    </span>
+  </span>
+</li>

@@ -1,0 +1,85 @@
+<nav>
+  <% if user.admin %><a href="/admin">Admin</a><% end %>
+</nav>
+
+<h1>Your Clubs</h1>
+
+<% if clubs.empty? %>
+  <section class="section">
+    <p class="dim">You're not in a club yet. Whoever runs yours has to add you.</p>
+  </section>
+<% else %>
+  <section class="section">
+    <%# Each card is one link to its club, and carries enough that you can see
+        where every club is standing without opening any of them: who's in it,
+        what's on the table, and how far along it is. %>
+    <ul class="clubs">
+      <% clubs.each do |club| %>
+        <% round = club.current_round %>
+        <% members = club.members %>
+        <% winner = round&.decided? ? Film[round.winning_film_id] : nil %>
+        <% posters = (winner ? [winner] : round&.open? ? round.films : []).select(&:poster_url) %>
+        <li>
+          <a class="stretched title-link club-name" href="<%= club.path %>"><%= club.name %></a>
+          <div class="club-facts">
+            <span><%= club.mode_icon %> <%= club.mode_label.downcase %></span>
+            <span><%= members.size %> <%= members.size == 1 ? "member" : "members" %></span>
+            <% played = club.past_rounds.count %>
+            <% if played.positive? %>
+              <span><%= played %> <%= played == 1 ? "round" : "rounds" %> played</span>
+            <% end %>
+          </div>
+
+          <%# The faces, so a club is recognisable before you've read its name. %>
+          <div class="faces">
+            <% members.first(6).each do |m| %>
+              <%== render("avatar", locals: { user: m }) %>
+            <% end %>
+          </div>
+
+          <p class="club-status">
+            <% if round.nil? %>
+              <span class="label">Nothing open.</span> The next round starts once the last film has been logged.
+            <% elsif round.open? %>
+              <span class="label"><%= round.label %> — voting.</span>
+              <% pending = round.pending_voters %>
+              <% if pending.empty? %>
+                Everyone's voted; the result is on its way.
+              <% else %>
+                Waiting on <%= pending.map(&:display_name).join(", ") %>.
+              <% end %>
+            <% elsif winner %>
+              <span class="label">Watching <%= winner.title_with_year %>.</span>
+              <% left = round.pending_loggers %>
+              <% if left.empty? %>
+                Everyone's logged it.
+              <% else %>
+                <%= left.size %> still to watch it.
+              <% end %>
+              <%# House style: a named film always brings its director and rating. %>
+              <br><span class="meta">
+                <% if winner.director %>dir. <%= winner.director %><% end %>
+                <% if winner.rating %><span class="rating">★ <%= winner.rating_display %></span><% end %>
+              </span>
+            <% end %>
+          </p>
+
+          <% if posters.any? %>
+            <div class="poster-row<%= posters.size == 1 ? " one" : "" %>">
+              <% posters.each do |f| %>
+                <img src="<%= f.poster_url %>" alt="<%= f.title_with_year %>" loading="lazy"
+                     width="<%= posters.size == 1 ? 70 : 46 %>" height="<%= posters.size == 1 ? 105 : 69 %>">
+              <% end %>
+            </div>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>
+
+<% unless user.linked? %>
+  <section class="section">
+    <p class="warn">You haven't linked a Letterboxd account yet, so your watchlist isn't in the mix. Ask for a fresh invite link.</p>
+  </section>
+<% end %>

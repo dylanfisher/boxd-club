@@ -1,0 +1,14 @@
+<h1>One more thing</h1>
+
+<section class="section">
+  <p>Signed in as <span class="dim"><%= user.email %></span>.</p>
+  <p>What's your Letterboxd username? We read your public watchlist once a week to work out what everyone wants to see.</p>
+  <% if error %><p class="err"><%= error %></p><% end %>
+  <form method="post" action="/profile/<%= token %>">
+    <%== csrf_tag("/profile/#{token}") %>
+    <p><input type="text" name="letterboxd_username" value="<%= user.letterboxd_username %>"
+              placeholder="username" autocapitalize="off" autocorrect="off" spellcheck="false" autofocus></p>
+    <p class="dim">Your watchlist has to be public. Username only &mdash; not the full URL, though we'll cope.</p>
+    <button type="submit">Save</button>
+  </form>
+</section>

@@ -1,0 +1,28 @@
+<%= club.name %>, <%= round.label.downcase %>
+
+<% if random -%>
+Nobody voted, so <%= club.name %> picked at random:
+<% else -%>
+The votes are in for <%= club.name %>.
+<% end %>
+
+  <%= film.display %>
+
+  <%= film.letterboxd_url %>
+<% if standings && !standings.empty? -%>
+
+Final standings (Borda count — your first pick scores <%= standings.size %>, your last scores 1):
+<% standings.each_with_index do |s, i| -%>
+  <%= i + 1 %>. <%= s[:film].display %> — <%= s[:points] %> pts<%= s[:firsts] > 0 ? ", #{s[:firsts]} first-place" : "" %>
+<% end -%>
+<% end -%>
+
+Watch it whenever you like, then log it on Letterboxd. The next round doesn't
+open until everyone has — we check your diary, so there's nothing to reply to.
+
+It won't come up again in a future round.
+
+<%= club_url %>
+
+--
+Unsubscribe: <%= unsub_url %>

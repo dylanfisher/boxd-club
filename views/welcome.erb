@@ -1,0 +1,20 @@
+<h1>You're in</h1>
+
+<section class="section">
+  <p>Linked to <a href="https://letterboxd.com/<%= user.letterboxd_username %>/" target="letterboxd"><%= user.letterboxd_username %></a>.
+     We read your public watchlist daily to work out what everyone wants to see.</p>
+</section>
+
+<% if clubs.empty? %>
+  <section class="section">
+    <p class="dim">You're not in a club yet — whoever invited you will add you.</p>
+  </section>
+<% else %>
+  <section class="section">
+    <ul class="clubs">
+      <% clubs.each do |club| %>
+        <li><a class="stretched title-link club-name" href="<%= club.path %>"><%= club.name %></a></li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>

@@ -1,0 +1,391 @@
+<%# The still from the film the club settled on, across the top of the page —
+    only once there's something to show. First thing in the page, so it runs up
+    to the header the way Letterboxd's does. %>
+<% settled = round && round.decided? ? Film[round.winning_film_id] : nil %>
+<% if settled&.backdrop_url %>
+  <div class="backdrop"><img src="<%= settled.backdrop_url %>" alt=""></div>
+<% end %>
+
+<nav>
+  <a href="/">All clubs</a>
+  <% if user.admin %>
+    <span class="sep" aria-hidden="true">›</span>
+    <a href="/admin/clubs/<%= club.slug %>">Admin</a>
+  <% end %>
+</nav>
+
+<%# The club's name, and beside it what the club has done so far — the same
+    numbers Letterboxd puts on a profile. %>
+<div class="page-head">
+  <div>
+    <h1><%= club.name %></h1>
+  </div>
+
+  <ul class="stats">
+    <li><span class="num"><%= club.films_watched %></span><span class="lbl">Watched</span></li>
+    <li><span class="num"><%= club.films_shortlisted %></span><span class="lbl">Shortlisted</span></li>
+    <li><span class="num"><%= club.rounds_played %></span><span class="lbl">Rounds</span></li>
+    <li><span class="num"><%= club.members.size %></span><span class="lbl">Members</span></li>
+  </ul>
+</div>
+
+<% if round && round.open? %>
+  <section class="section">
+    <h2>Voting — <%= round.label.downcase %></h2>
+    <%# When the round opened leads the status line — it dates what follows. %>
+    <p class="dim">
+      Opened <%= Fmt.date(round.opened_at) %> |
+      <% pending = round.pending_voters %>
+      <% if pending.empty? %>
+        Everyone's voted.
+      <% else %>
+        Open until everyone votes — still waiting on
+        <%= pending.map(&:display_name).join(", ") %>.
+      <% end %>
+    </p>
+    <% if ballot_error %><p class="err"><%= ballot_error %></p><% end %>
+
+    <%# Voted or not, the ballot is the same editable list — a ballot stands
+        until the round closes, and the round closes the moment the last person
+        votes. See the note in Votes.record_ranking!. %>
+    <% if voted %><h3>Your ballot</h3><% end %>
+    <p class="dim">
+      <% if voted %>
+        You've voted. You can change your ballot until the round closes.
+      <% end %>
+      Drag to reorder, or use the number menus. Top of the list is what you most
+      want to watch.
+    </p>
+
+    <form method="post" action="<%= club.path %>/vote" id="ballot-form">
+      <%== csrf_tag("#{club.path}/vote") %>
+      <ol class="films" id="ballot">
+        <% candidates.each_with_index do |(cand, film), i| %>
+          <li data-cand="<%= cand.id %>">
+            <span class="handle" aria-hidden="true">⠿</span>
+            <span class="pos"><%= i + 1 %>.</span>
+            <%== render("film", locals: { film: film, note: "#{cand.match_count} #{cand.match_count == 1 ? 'person has' : 'people have'} this on their watchlist" }) %>
+            <select name="rank[<%= cand.id %>]" aria-label="Position for <%= film.title %>">
+              <% (1..candidates.size).each do |n| %>
+                <option value="<%= n %>"<%= n == i + 1 ? " selected" : "" %>><%= n %></option>
+              <% end %>
+            </select>
+          </li>
+        <% end %>
+      </ol>
+      <button type="submit" class="save-button"><%= voted ? "Update ballot" : "Submit ballot" %></button>
+    </form>
+
+    <style>
+      /* Elsewhere a form's last field carries its own bottom margin, so the
+         submit sits --space-4 below it. `ol.films` has no bottom margin, so
+         this button has to make up the whole gap itself. ID selector because
+         the shared `form > button[type=submit]` rule outranks a bare class. */
+      #ballot-form > .save-button { margin-top: var(--space-4); }
+
+      /* The handle sits above the row's stretched card link, so grabbing a film
+         is a drag rather than a trip to Letterboxd. */
+      .handle {
+        display: none; color: var(--dim); cursor: grab; touch-action: none;
+        user-select: none; padding: 0 .2rem; font-size: 1.1rem;
+        position: relative; z-index: 1;
+      }
+      #ballot.js .handle { display: inline; }
+      #ballot.dragging { cursor: grabbing; }
+      #ballot.dragging .handle { cursor: grabbing; }
+
+      /* The real <li> stays in the list while dragging and becomes the gap the
+         film will drop into; a fixed-position clone is what follows the finger. */
+      #ballot li.placeholder { background: transparent; border-style: dashed; border-color: var(--accent); }
+      #ballot li.placeholder > * { visibility: hidden; }
+
+      /* The ghost is appended to <body>, so neither `ol.films li` nor
+         `#ballot.js .handle` reaches it — it carries both itself, otherwise the
+         grip icon vanishes from the one row you're actually holding. */
+      .drag-ghost .handle { display: inline; color: #fff; }
+      .drag-ghost {
+        position: fixed; z-index: 50; margin: 0; pointer-events: none;
+        list-style: none;
+        display: flex; align-items: center; gap: var(--space-3);
+        background: var(--card); border: 1px solid var(--accent);
+        border-radius: .5rem; padding: var(--space-3);
+        box-shadow: 0 .75rem 1.5rem rgba(0, 0, 0, .45);
+      }
+      .drag-ghost.dropping { transition: transform .18s cubic-bezier(.2, .8, .25, 1); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .drag-ghost { box-shadow: none; }
+      }
+    </style>
+
+  <script>
+  // Progressive enhancement: without this, the <select> menus are the form and
+  // the Submit button posts it normally. Nothing here talks to the server — the
+  // ballot is only ever sent by submitting the form. HTML5 drag-and-drop is
+  // deliberately not used — it does not work on mobile Safari or Chrome, which
+  // is where most people open the ballot email. Pointer Events cover touch and
+  // mouse in one code path.
+  (function () {
+    var list = document.getElementById('ballot');
+    var form = document.getElementById('ballot-form');
+    if (!list || !form || !window.PointerEvent) return;
+    list.classList.add('js');
+    form.classList.add('js');
+    document.documentElement.classList.add('js');
+
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var EASE = 'transform 180ms cubic-bezier(.2,.8,.25,1)';
+
+    var dragging = null;   // the <li> being moved — left in the list as the gap
+    var ghost = null;      // fixed-position clone under the finger
+    var pointerId = null;
+    var flipToken = 0;     // guards a stale cleanup from cancelling a newer slide
+    var startY = 0;        // pointer y at grab
+    var ghostTop = 0;      // ghost's fixed top at grab
+
+    function renumber() {
+      Array.prototype.forEach.call(list.children, function (li, i) {
+        li.querySelector('.pos').textContent = (i + 1) + '.';
+        li.querySelector('select').value = String(i + 1);
+      });
+    }
+
+    // FLIP: measure, let `move` reorder the DOM, then animate every row that
+    // shifted from its old position to its new one. The placeholder is excluded
+    // so the gap appears instantly where the film will land.
+    function animateReorder(move) {
+      var kids = Array.prototype.slice.call(list.children);
+      var before = kids.map(function (el) { return el.getBoundingClientRect().top; });
+      move();
+      renumber();
+      if (calm) return;
+      kids.forEach(function (el, i) {
+        if (el === dragging) return;
+        var dy = before[i] - el.getBoundingClientRect().top;
+        if (!dy) return;
+        el.style.transition = 'none';
+        el.style.transform = 'translateY(' + dy + 'px)';
+      });
+      // Force layout so the browser sees the pre-transform position, then let
+      // the transition carry each row home.
+      void list.offsetHeight;
+      kids.forEach(function (el) {
+        if (el === dragging || !el.style.transform) return;
+        el.style.transition = EASE;
+        el.style.transform = '';
+      });
+      // Hand styling back to the stylesheet once the slide is over, so the
+      // inline transition doesn't shadow the sheet's border-color one.
+      var mine = ++flipToken;
+      setTimeout(function () { if (mine === flipToken) clearTransforms(); }, 200);
+    }
+
+    function clearTransforms() {
+      Array.prototype.forEach.call(list.children, function (el) {
+        el.style.transition = '';
+        el.style.transform = '';
+      });
+    }
+
+    list.addEventListener('pointerdown', function (e) {
+      if (dragging || e.button > 0) return;
+      var handle = e.target.closest('.handle');
+      if (!handle) return;
+      e.preventDefault();
+
+      dragging = handle.closest('li');
+      pointerId = e.pointerId;
+      // Capture on the list, not the handle: reordering re-inserts the handle's
+      // <li>, and a DOM move can implicitly release capture mid-drag.
+      list.setPointerCapture(pointerId);
+
+      var r = dragging.getBoundingClientRect();
+      startY = e.clientY;
+      ghostTop = r.top;
+
+      ghost = dragging.cloneNode(true);
+      ghost.className = dragging.className + ' drag-ghost';
+      ghost.style.left = r.left + 'px';
+      ghost.style.top = r.top + 'px';
+      ghost.style.width = r.width + 'px';
+      ghost.style.height = r.height + 'px';
+      document.body.appendChild(ghost);
+
+      dragging.classList.add('placeholder');
+      list.classList.add('dragging');
+    });
+
+    list.addEventListener('pointermove', function (e) {
+      if (!dragging || e.pointerId !== pointerId) return;
+      e.preventDefault();
+
+      var dy = e.clientY - startY;
+      ghost.style.transform = 'translateY(' + dy + 'px)';
+
+      // Swap only once the ghost's midpoint clears a neighbour's midpoint.
+      // Neighbours mid-slide are transformed, so their bounding rects report a
+      // lagging position — measure against untransformed layout offsets
+      // (offsetTop ignores transforms) anchored on the placeholder, which never
+      // animates. Otherwise one drag past a still-animating row cascades into
+      // several swaps.
+      var mid = ghostTop + dy + ghost.offsetHeight / 2;
+      var anchor = dragging.getBoundingClientRect().top - dragging.offsetTop;
+      var others = Array.prototype.filter.call(list.children, function (n) { return n !== dragging; });
+      var target = null, i;
+      for (i = 0; i < others.length; i++) {
+        var el = others[i];
+        if (mid < anchor + el.offsetTop + el.offsetHeight / 2) { target = el; break; }
+      }
+      if (target === dragging.nextElementSibling) return;
+      if (target === null && !dragging.nextElementSibling) return;
+      animateReorder(function () {
+        if (target) list.insertBefore(dragging, target);
+        else list.appendChild(dragging);
+      });
+    });
+
+    function stop() {
+      if (!dragging) return;
+      var li = dragging, g = ghost;
+      dragging = null; ghost = null; pointerId = null;
+      list.classList.remove('dragging');
+
+      function land() {
+        li.classList.remove('placeholder');
+        if (g.parentNode) g.parentNode.removeChild(g);
+        clearTransforms();
+        renumber();
+      }
+
+      // Drop the ghost onto the gap rather than letting it vanish mid-air.
+      var to = li.getBoundingClientRect().top - ghostTop;
+      if (calm) return land();
+      g.classList.add('dropping');
+      g.style.transform = 'translateY(' + to + 'px)';
+      var done = false;
+      var finish = function () { if (done) return; done = true; land(); };
+      g.addEventListener('transitionend', finish);
+      setTimeout(finish, 260);
+    }
+    list.addEventListener('pointerup', stop);
+    list.addEventListener('pointercancel', stop);
+
+    // Keep the menus authoritative for keyboard users: choosing a number moves
+    // that film there and renumbers the rest, so the result is always a valid
+    // 1..n permutation rather than a duplicate the server would reject.
+    list.addEventListener('change', function (e) {
+      if (e.target.tagName !== 'SELECT') return;
+      var li = e.target.closest('li');
+      var target = parseInt(e.target.value, 10) - 1;
+      var others = Array.prototype.filter.call(list.children, function (n) { return n !== li; });
+      animateReorder(function () {
+        if (target >= others.length) list.appendChild(li);
+        else list.insertBefore(li, others[target]);
+      });
+    });
+
+    renumber();
+  })();
+  </script>
+  </section>
+
+<% elsif round && round.decided? %>
+  <% film = Film[round.winning_film_id] %>
+  <section class="section">
+    <h2>We're watching — <%= round.label.downcase %></h2>
+    <ul class="films"><li><%== render("film", locals: { film: film, big: true }) %></li></ul>
+    <p class="dim">
+      Decided <%= Fmt.date(round.decided_at) %><%= round.random_pick ? " at random — nobody voted" : "" %>.
+      Log it on Letterboxd once you've watched it; the next round opens when everyone has.
+    </p>
+    <% waiting = round.pending_loggers %>
+    <% if waiting.any? %>
+      <p class="dim">Still to watch it:</p>
+      <ul class="people">
+        <% waiting.each do |m| %>
+          <li class="pending"><%== render("member", locals: { user: m }) %></li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+
+  <%# Can't get hold of it, or gone off it: half the club ends the round and the
+      next ballot goes out. %>
+  <% skips = round.skip_voters %>
+  <section class="section">
+    <h3>Not this one?</h3>
+    <p class="dim">
+      <%= skips.size %> of <%= round.skips_needed %> needed to skip
+      <%= film&.title %> and open the next round.
+    </p>
+    <% if skips.any? %>
+      <ul class="people">
+        <% skips.each do |m| %>
+          <li><%== render("member", locals: { user: m }) %></li>
+        <% end %>
+      </ul>
+    <% end %>
+    <% if round.skipped_by?(user) %>
+      <p class="dim">You've voted to skip it. Waiting on the rest of the club.</p>
+    <% else %>
+      <form method="post" action="<%= club.path %>/skip">
+        <%== csrf_tag("#{club.path}/skip") %>
+        <button class="secondary" type="submit">Vote to skip</button>
+      </form>
+    <% end %>
+  </section>
+
+  <% if standings.any? %>
+    <section class="section">
+      <h2>How it went</h2>
+      <ol class="films">
+        <% standings.each_with_index do |row, i| %>
+          <li>
+            <span class="pos"><%= i + 1 %>.</span>
+            <%== render("film", locals: { film: row[:film], note: "#{row[:points]} points" }) %>
+          </li>
+        <% end %>
+      </ol>
+    </section>
+  <% end %>
+<% else %>
+  <section class="section">
+    <h2>Nothing open</h2>
+    <p class="dim">No round is running. A new one opens as soon as the last film has been logged by everyone.</p>
+  </section>
+<% end %>
+
+<section class="section">
+  <%# The icon says which mode; the marker after the label carries the note that
+      used to be a paragraph — the labels alone read like three modes that all
+      mean "our watchlists". %>
+  <p class="mode">
+    <span class="icon" aria-hidden="true"><%= club.mode_icon %></span>
+    <span class="label"><%= club.mode_label %></span>
+    <span class="info" tabindex="0" role="note" title="<%= club.mode_note %>"
+          aria-label="<%= club.mode_note %>">i</span>
+    <% if club.list_url %>
+      — <a href="<%= club.list_url %>" target="letterboxd"><%= club.list_owner %>/<%= club.list_slug %></a>
+    <% end %>
+  </p>
+</section>
+
+<section class="section">
+  <h2><%= club.members.size %> <%= club.members.size == 1 ? "member" : "members" %></h2>
+  <ul class="people">
+    <% club.members.each do |m| %>
+      <li><%== render("member", locals: { user: m }) %></li>
+    <% end %>
+  </ul>
+</section>
+
+<% if history.any? %>
+  <section class="section">
+    <h2>Previous rounds</h2>
+    <ul class="films">
+      <% history.each do |r| %>
+        <%== render("round_card", locals: { round: r }) %>
+      <% end %>
+    </ul>
+  </section>
+<% end %>

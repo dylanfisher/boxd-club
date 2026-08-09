@@ -1,0 +1,151 @@
+<nav>
+  <a href="/admin">Admin</a>
+  <span class="sep" aria-hidden="true">›</span>
+  <a href="<%= club.path %>">Club page</a>
+</nav>
+
+<h1><%= club.name %></h1>
+
+<section class="section">
+  <div class="card">
+    <form method="post" action="/admin/clubs/<%= club.slug %>">
+      <%== csrf_tag("/admin/clubs/#{club.slug}") %>
+      <label for="name">Name</label>
+      <p><input type="text" id="name" name="name" value="<%= club.name %>" required></p>
+      <label for="list_mode">Where the films come from</label>
+      <p>
+        <select id="list_mode" name="list_mode">
+          <% Club::MODES.each do |m| %>
+            <option value="<%= m %>"<%= m == club.list_mode ? " selected" : "" %>><%= Club::MODE_ICONS[m] %> <%= Club::MODE_LABELS[m] %></option>
+          <% end %>
+        </select>
+      </p>
+      <%# All three watchlist modes read the same pool; only the overlap they
+          demand differs. Spelling that out here saves a support conversation. %>
+      <ul class="mode-notes">
+        <% Club::MODES.each do |m| %>
+          <li>
+            <span class="icon" aria-hidden="true"><%= Club::MODE_ICONS[m] %></span>
+            <span><b><%= Club::MODE_LABELS[m] %></b> — <%= Club::MODE_NOTES[m] %></span>
+          </li>
+        <% end %>
+      </ul>
+      <label for="list_url">Letterboxd list URL</label>
+      <p><input type="text" id="list_url" name="list_url" value="<%= club.list_url %>"
+                placeholder="https://letterboxd.com/user/list/name/"></p>
+      <label for="ballot_size">Films per ballot</label>
+      <p><input type="number" id="ballot_size" name="ballot_size" value="<%= club.ballot_size %>" min="2" max="10"></p>
+      <button type="submit">Save</button>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Members</h2>
+  <ul class="films">
+    <% club.members.each do |m| %>
+      <li>
+        <%== render("avatar", locals: { user: m }) %>
+        <span class="title">
+          <%= m.email %>
+          <br><span class="meta">
+            <%= m.letterboxd_username || "no Letterboxd account" %> ·
+            <%= m.watchlist_size %> films ·
+            <% if m.unsubscribed_at %>unsubscribed<% elsif m.verified_at %>active<% else %>invited, not signed in yet<% end %>
+          </span>
+        </span>
+        <form method="post" action="/admin/clubs/<%= club.slug %>/remove">
+          <%== csrf_tag("/admin/clubs/#{club.slug}/remove") %>
+          <input type="hidden" name="user_id" value="<%= m.id %>">
+          <button class="secondary" type="submit">Remove</button>
+        </form>
+      </li>
+    <% end %>
+  </ul>
+</section>
+
+<section class="section">
+  <div class="card">
+    <form method="post" action="/admin/clubs/<%= club.slug %>/invite">
+      <%== csrf_tag("/admin/clubs/#{club.slug}/invite") %>
+      <label for="email">Invite someone to this club</label>
+      <p><input type="email" id="email" name="email" placeholder="them@example.com" required></p>
+      <button type="submit">Send invite</button>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Current round</h2>
+  <% if round.nil? %>
+    <p class="dim">Nothing open.</p>
+  <% else %>
+    <p class="dim">
+      <a href="<%= round.path %>"><%= round.label %></a> · <%= round.state %> · opened <%= Fmt.date(round.opened_at) %>
+      <% if round.open? %>
+        · waiting on <%= round.pending_voters.map(&:display_name).join(", ").then { |s| s.empty? ? "nobody" : s } %>
+      <% elsif round.decided? %>
+        · <%= Film[round.winning_film_id]&.display %>
+        · still to log it: <%= round.pending_loggers.map(&:display_name).join(", ").then { |s| s.empty? ? "nobody" : s } %>
+        · votes to skip: <%= round.skip_voters.size %> of <%= round.skips_needed %>
+      <% end %>
+    </p>
+    <ol class="films">
+      <% candidates.each do |cand, film| %>
+        <li>
+          <span class="pos"><%= cand.position %>.</span>
+          <%== render("film", locals: { film: film, note: "#{cand.match_count} on watchlists" }) %>
+        </li>
+      <% end %>
+    </ol>
+  <% end %>
+</section>
+
+<section class="section">
+  <div class="card">
+    <p class="dim">Overrides. Rounds normally move themselves along — use these when a club is stuck.</p>
+
+    <%# Separate from the overrides below: this one changes nothing, it just
+        emails the people who still owe a ballot. %>
+    <form method="post" action="/admin/clubs/<%= club.slug %>/nudge">
+      <%== csrf_tag("/admin/clubs/#{club.slug}/nudge") %>
+      <% waiting = round&.open? ? round.pending_voters : [] %>
+      <button type="submit"<%= waiting.empty? ? " disabled" : "" %>>
+        <% if round.nil? || !round.open? %>
+          Nudge non-voters
+        <% elsif waiting.empty? %>
+          Everyone's voted
+        <% else %>
+          Nudge <%= waiting.size %> <%= waiting.size == 1 ? "person" : "people" %> who haven't voted
+        <% end %>
+      </button>
+      <span class="dim">
+        <% if waiting.any? %>
+          <%= waiting.map(&:display_name).join(", ") %>.
+        <% end %>
+        Sends straight away, ignoring the every-<%= Rounds::NUDGE_DAYS %>-days limit on automatic reminders.
+      </span>
+    </form>
+
+    <hr>
+
+    <% %w[open tally check watched].each do |action| %>
+      <form method="post" action="/admin/clubs/<%= club.slug %>/round/<%= action %>" style="display:inline-block; margin: .25rem .25rem 0 0">
+        <%== csrf_tag("/admin/clubs/#{club.slug}/round/#{action}") %>
+        <button class="secondary" type="submit">
+          <%= { "open" => "Open a round now", "tally" => "Tally now",
+                "check" => "Re-check who's logged it", "watched" => "Mark watched, start next" }[action] %>
+        </button>
+      </form>
+    <% end %>
+  </div>
+</section>
+
+<section class="section">
+  <h2>History</h2>
+  <ul class="films">
+    <% history.each do |r| %>
+      <%== render("round_card", locals: { round: r }) %>
+    <% end %>
+  </ul>
+</section>

@@ -1,0 +1,10 @@
+.git/
+tmp/
+# The database lives on a mounted volume — never bake one into the image.
+# db/migrate/ must NOT be excluded; migrations run from inside the container.
+db/*.db
+db/*.db-wal
+db/*.db-shm
+db/backups/
+.env
+db/avatars/

@@ -1,0 +1,29 @@
+<p class="eyebrow" style="color:#8b9aa8;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px"><%= round.label %></p>
+<p style="color:#d8e0e8"><strong><%= club.name %></strong> — <%= candidates.size %> films, picked from what <%= member_count %> of us have on our watchlists.</p>
+<%# One row per film: rank, poster, then the title and its meta line. A table
+    rather than a list because Outlook won't put a list marker beside an image. %>
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="film">
+  <% candidates.each_with_index do |(cand, film), i| %>
+    <tr>
+      <td class="rank" style="color:#8b9aa8;padding:0 8px 16px 0;vertical-align:top"><%= i + 1 %>.</td>
+      <% if film.poster_url %>
+        <td style="padding:0 12px 16px 0;vertical-align:top;width:60px">
+          <img src="<%= film.poster_url %>" width="60" alt="" style="display:block;border-radius:3px">
+        </td>
+      <% end %>
+      <td style="padding:0 0 16px;vertical-align:top;color:#d8e0e8">
+        <a href="<%= film.letterboxd_url %>" class="title-link" style="color:#d8e0e8;text-decoration:none;font-weight:bold"><%= film.title %></a><% if film.year %>
+          <span class="meta" style="color:#8b9aa8"><%= film.year %></span><% end %><br>
+        <span class="meta" style="color:#8b9aa8;font-size:14px">
+          <% if film.director %>dir. <%= film.director %><% end %><% if film.rating %> · ★ <%= film.rating_display %><% end %>
+          · <%= cand.match_count %> of us want it
+        </span>
+      </td>
+    </tr>
+  <% end %>
+</table>
+<%= Mailer.button(club_url, "Rank them") %>
+<p class="meta<%= stale.empty? ? " last" : "" %>" style="color:#8b9aa8;font-size:14px">No deadline: the round stays open until everyone has voted, and the winner is decided the moment the last ballot lands.</p>
+<% unless stale.empty? %>
+  <p class="warn last" style="color:#e0a020;font-size:14px">Heads up: we couldn't refresh <%= stale.join(", ") %>'s watchlist recently, so this ballot may be out of date.</p>
+<% end %>

@@ -1,0 +1,98 @@
+<nav>
+  <a href="/">All clubs</a>
+</nav>
+
+<h1>Admin</h1>
+
+<section class="section">
+  <h2>Clubs</h2>
+  <% if clubs.empty? %>
+    <p class="dim">No clubs yet.</p>
+  <% else %>
+    <ul class="films">
+      <% clubs.each do |club| %>
+        <%# Poster of whatever the club is on right now, falling back to the last
+            film it watched so a club between rounds still has art. %>
+        <% cf = Film[club.current_round&.winning_film_id || club.rounds_dataset.exclude(winning_film_id: nil).order(Sequel.desc(:opened_at)).get(:winning_film_id)] %>
+        <li class="card-link">
+          <% if cf&.poster_url %>
+            <img class="poster big" src="<%= cf.poster_url %>" alt="" loading="lazy" width="70" height="105">
+          <% end %>
+          <span class="title">
+            <a class="stretched" href="/admin/clubs/<%= club.slug %>"><%= club.name %></a>
+            <br><span class="meta">
+              <%= club.mode_icon %> <%= club.mode_label %> ·
+              <%= club.members.size %> members · ballot of <%= club.ballot_size %>
+              <% if cf %><br>on <%= cf.title_with_year %><% if cf.director %>, dir. <%= cf.director %><% end %>
+                <% if cf.rating %><span class="rating">★ <%= cf.rating_display %></span><% end %>
+              <% end %>
+            </span>
+          </span>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>
+
+<section class="section">
+  <div class="card">
+    <form method="post" action="/admin/clubs">
+      <%== csrf_tag("/admin/clubs") %>
+      <label for="name">New club</label>
+      <p><input type="text" id="name" name="name" placeholder="Thursday Night Club" required></p>
+      <label for="list_mode">Where the films come from</label>
+      <p>
+        <select id="list_mode" name="list_mode">
+          <% Club::MODES.each do |m| %>
+            <option value="<%= m %>"><%= Club::MODE_ICONS[m] %> <%= Club::MODE_LABELS[m] %></option>
+          <% end %>
+        </select>
+      </p>
+      <ul class="mode-notes">
+        <% Club::MODES.each do |m| %>
+          <li>
+            <span class="icon" aria-hidden="true"><%= Club::MODE_ICONS[m] %></span>
+            <span><b><%= Club::MODE_LABELS[m] %></b> — <%= Club::MODE_NOTES[m] %></span>
+          </li>
+        <% end %>
+      </ul>
+      <label for="list_url">Letterboxd list URL (only for the last mode)</label>
+      <p><input type="text" id="list_url" name="list_url" placeholder="https://letterboxd.com/user/list/name/"></p>
+      <label for="ballot_size">Films per ballot</label>
+      <p><input type="number" id="ballot_size" name="ballot_size" value="5" min="2" max="10"></p>
+      <button type="submit">Create club</button>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  <h2>People</h2>
+  <ul class="films">
+    <% users.each do |u| %>
+      <li>
+        <%== render("avatar", locals: { user: u }) %>
+        <span class="title">
+          <%= u.email %><%= u.admin ? " ★" : "" %>
+          <br><span class="meta">
+            <%= u.letterboxd_username || "no Letterboxd account" %> ·
+            <%= u.watchlist_size %> films ·
+            <% if u.unsubscribed_at %>unsubscribed<% elsif u.verified_at %>active<% else %>invited, not signed in yet<% end %> ·
+            <%= u.clubs.map(&:name).join(", ") %>
+          </span>
+        </span>
+      </li>
+    <% end %>
+  </ul>
+</section>
+
+<section class="section">
+  <div class="card">
+    <form method="post" action="/admin/invite">
+      <%== csrf_tag("/admin/invite") %>
+      <label for="invite_email">Invite someone (no club yet)</label>
+      <p><input type="email" id="invite_email" name="email" placeholder="them@example.com" required></p>
+      <p class="dim"><label><input type="checkbox" name="admin" value="1"> Make them an admin</label></p>
+      <button type="submit">Send invite</button>
+    </form>
+  </div>
+</section>

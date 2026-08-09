@@ -1,0 +1,25 @@
+<h1>Welcome back</h1>
+
+<% if sent %>
+  <section class="section">
+    <p>Check your email — if you have access to a club there will be a sign-in link waiting.</p>
+  </section>
+<% else %>
+  <section class="section">
+    <form method="post" action="/login">
+      <%== csrf_tag("/login") %>
+      <label for="email">Email</label>
+      <p><input type="email" id="email" name="email" placeholder="you@example.com"
+                autocapitalize="off" autocorrect="off" spellcheck="false" autofocus required></p>
+      <button type="submit">Email me a link</button>
+    </form>
+  </section>
+<% end %>
+
+<%# A different film line every load; see lib/quotes.rb. %>
+<section class="section">
+  <blockquote class="quote">
+    <p class="lede"><%= quote.text %></p>
+    <cite><%= quote.credit %></cite>
+  </blockquote>
+</section>

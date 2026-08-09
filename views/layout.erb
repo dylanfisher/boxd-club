@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Boxd Club</title>
+<%# "BC" in two of the three Letterboxd dot colours, inline so there's no asset
+    route to serve and nothing to cache-bust. Hashes are escaped for the URI. %>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23455566'/><text x='32' y='33' text-anchor='middle' dominant-baseline='central' font-family='Helvetica,Arial,sans-serif' font-size='34' font-weight='700'><tspan fill='%23ff8000'>B</tspan><tspan fill='%2340BCF4'>C</tspan></text></svg>">
+<style>
+  :root {
+    --bg: #14181c; --fg: #d8e0e8; --dim: #8b9aa8; --line: #2c3440;
+    --card: #1c2228; --accent: #00c030; --accent-dark: #00a028;
+    --blue: #40bcf4; --orange: #ff8000; --warn: #e0a020;
+    --header: #14181c; --footer: #2C3441;
+    --header-height: 72px;
+
+    /* One vertical rhythm for the whole app.
+       Space is only ever set from this scale, and almost always by the two
+       rules under "Rhythm" below rather than by hand — a new page gets its
+       spacing right by wrapping each block in <section class="section">, and
+       nothing needs a one-off margin. */
+    --space-1: .25rem;   /* inside a line: an icon from its label */
+    --space-2: .5rem;    /* a heading from the paragraph under it */
+    --space-3: .75rem;   /* between rows of a list */
+    --space-4: 1rem;     /* between paragraphs, inside a card */
+    --space-5: 1.5rem;   /* a block from the next block in the same section */
+    --space-6: 2rem;     /* page top */
+    --space-7: 3rem;     /* between sections — the one that sets the pace */
+
+    /* Letterboxd's page wash: light at the top, settling into the dark. */
+    --wash-top: #1E242A; --wash-bottom: #14181c;
+    /* Letterboxd sets film titles in Tiempos. Nobody else has it, so this is
+       the nearest thing every device already ships. Film titles and the header
+       counts only — headings and the wordmark are sans. */
+    --serif: "Tiempos Headline", ui-serif, Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    /* One measure for the header, the page and the footer, so the wordmark,
+       the content and the footer links all sit on the same left edge. */
+    --measure: 45rem;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; flex-direction: column;
+    background: var(--bg); color: var(--fg);
+    font: 16px/1.55 var(--sans);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Solid dark bar, then the gradient page, then a lighter footer. */
+  .site-header {
+    background: var(--header);
+    border-bottom: 1px solid var(--line);
+    height: var(--header-height);
+  }
+  .site-header .inner {
+    max-width: var(--measure); margin: 0 auto; padding: .9rem 1rem;
+    display: flex; align-items: center; gap: var(--space-4);
+  }
+  .wordmark {
+    font-family: var(--sans); font-size: 1.7rem; font-weight: 700;
+    color: #fff; text-decoration: none; letter-spacing: -.02em; margin-right: auto;
+  }
+  /* Blue, like the C in the favicon; the favicon's orange on hover. */
+  .wordmark .dot { color: var(--blue); }
+
+  /* Who you are, in the corner of every page. Click it and the way out drops
+     down — a <details>, so it works without JavaScript. */
+  .whoami {
+    position: relative;
+    font-size: .85rem; color: var(--dim); min-width: 0;
+  }
+  .whoami .who {
+    display: flex; align-items: center; gap: var(--space-2); min-width: 0;
+    cursor: pointer; list-style: none; user-select: none;
+  }
+  /* Safari still draws its own triangle unless this is spelled out. */
+  .whoami .who::-webkit-details-marker { display: none; }
+  .whoami .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .whoami .caret {
+    flex-shrink: 0; width: 0; height: 0;
+    border-left: .3rem solid transparent; border-right: .3rem solid transparent;
+    border-top: .35rem solid currentColor;
+    transition: transform .12s ease;
+  }
+  .whoami[open] .caret { transform: rotate(180deg); }
+  .whoami .menu {
+    position: absolute; top: calc(100% + .5rem); right: 0; z-index: 10;
+    min-width: 9rem;
+    background: var(--card); border: 1px solid var(--line); border-radius: .4rem;
+    padding: var(--space-2);
+    box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.45);
+  }
+  .whoami .menu form { margin: 0; }
+  /* Every row in the menu looks the same whether it's a form's button or a
+     plain link — the only difference should be what it does. */
+  .whoami button.link, .whoami .menu a {
+    display: block; width: 100%; text-align: left;
+    color: var(--dim); text-decoration: none; padding: .25rem .35rem;
+    border-radius: .25rem;
+  }
+  @media (max-width: 30rem) {
+    /* The address is the first thing to go — the avatar already says who. */
+    .whoami .name { display: none; }
+  }
+
+  .page {
+    flex: 1 0 auto;
+    background: linear-gradient(to bottom, var(--wash-top) 0%, var(--wash-bottom) 22rem);
+  }
+  main { max-width: var(--measure); margin: 0 auto; padding: var(--space-6) 1rem 4rem; }
+
+  .site-footer {
+    flex-shrink: 0; background: var(--footer); border-top: 1px solid var(--line);
+    color: var(--dim); font-size: .85rem;
+  }
+  .site-footer .inner {
+    max-width: var(--measure); margin: 0 auto; padding: var(--space-5) 1rem;
+    display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); align-items: center;
+  }
+  .site-footer a { color: var(--dim); }
+
+  /* ---- Rhythm -------------------------------------------------------------
+     Two rules do nearly all the vertical spacing on every page:
+
+       .section          a block of the page — a heading and what belongs to it.
+                         Sections are separated by --space-7 and nothing else.
+       .section > * + *  everything inside a section is --space-5 apart, except
+                         the first thing after the heading, which is closer.
+
+     Adding a page means wrapping its blocks in <section class="section">. It
+     should never mean writing a margin. */
+  .section { margin: var(--space-7) 0 0; }
+  .section:first-child { margin-top: 0; }
+  .section > * { margin: 0; }
+  .section > * + * { margin-top: var(--space-5); }
+  .section > h2 + *, .section > h3 + * { margin-top: var(--space-2); }
+  /* Consecutive lines of prose read as one block, not two. */
+  .section > p + p, .section > p + .films, .section > p + .people { margin-top: var(--space-2); }
+
+  /* Headings are labels, not display type: small uppercase sans at one size,
+     telling you what a block is. The serif is reserved for film titles, so a
+     heading never competes with the films underneath it. */
+  h1, h2, h3 {
+    font-family: var(--sans); font-weight: normal; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .5px; color: #fff;
+  }
+  /* The page's own name is the exception — it's what you're looking at, so it
+     stays a real title rather than another label. */
+  h1 {
+    font-size: 22px; font-weight: 700; text-transform: none; letter-spacing: -.01em;
+    margin: 0 0 var(--space-7);
+  }
+  h2 { margin: var(--space-7) 0 var(--space-2); }
+  h3 { margin: var(--space-5) 0 var(--space-1); }
+  /* The page's title block: name on the left, the club's numbers on the right,
+     sitting on the same baseline. On a narrow screen the numbers wrap under
+     the name and go back to the left margin. */
+  .page-head {
+    display: flex; flex-wrap: wrap; align-items: flex-end;
+    justify-content: space-between; gap: var(--space-3) var(--space-5);
+    margin: 0 0 var(--space-7);
+  }
+  .page-head > div { min-width: 0; }
+  .page-head h1 { margin: 0; }
+
+  /* Letterboxd's profile counts: the number in the serif, what it counts small
+     and dim underneath, a faint rule between. Body-coloured rather than white —
+     these are a footnote to the club name, not a headline. */
+  .stats { display: flex; list-style: none; margin: 0; padding: 0; }
+  .stats li { padding: 0 var(--space-3); text-align: center; border-left: 1px solid rgba(255, 255, 255, .07); }
+  .stats li:first-child { border-left: 0; padding-left: 0; }
+  .stats li:last-child { padding-right: 0; }
+  .stats .num {
+    display: block; font-family: var(--serif); font-size: 1.15rem; font-weight: 700;
+    color: var(--fg); line-height: 1.15;
+  }
+  .stats .lbl {
+    display: block; margin-top: .15rem;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .75px; color: rgb(102, 119, 136);
+  }
+
+  /* A small line of metadata sitting above a title. Dimmer and tighter than a
+     heading, or the two read as one stack of labels. */
+  .eyebrow {
+    font-family: var(--sans); font-size: .75rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 var(--space-1);
+  }
+  p { margin: var(--space-2) 0; }
+  .dim { color: var(--dim); font-size: .9rem; }
+  .warn { color: var(--warn); font-size: .9rem; }
+  .lede { font-family: var(--serif); font-size: 1.1rem; color: #fff; }
+
+  /* A borrowed line, and the film it's borrowed from. */
+  .quote .lede { margin: 0; }
+  .quote cite { display: block; margin-top: var(--space-1); font-style: normal; font-size: .85rem; color: var(--dim); }
+  .quote cite::before { content: "— "; }
+
+  /* Body links: white, underlined. Titles opt out below. */
+  a { color: #fff; text-decoration: underline; text-underline-offset: .15em; }
+  a.title-link, .title a, h1 a, h2 a, .wordmark { text-decoration: none; }
+  .title a { font-family: var(--serif); font-weight: 600; color: #fff; }
+
+  /* A card that is one link, all over.
+     The <a> keeps the real href — so it's still a link to middle-click, still
+     announced once, still keyboard-reachable — and an invisible layer over the
+     whole card carries the click. Anything interactive inside the card lifts
+     itself above that layer (see .handle / select below). */
+  li:has(a.stretched) { position: relative; cursor: pointer; }
+  a.stretched::after { content: ""; position: absolute; inset: 0; z-index: 0; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: var(--space-5) 0; }
+  nav {
+    margin-bottom: var(--space-5); font-size: .9rem; color: var(--dim);
+    display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  }
+  nav form { margin: 0; }
+  nav a, nav button.link { color: var(--dim); text-decoration: underline; }
+  /* The chevron between breadcrumbs. Its own element rather than a pseudo on
+     the links, so it isn't underlined and isn't part of anything's hit area. */
+  nav .sep { color: currentColor; user-select: none; }
+  nav button.link, .whoami button.link {
+    background: none; padding: 0; font-weight: 400; border: 0; font-size: inherit;
+  }
+
+  button, input[type=submit] {
+    font: inherit; font-weight: 600;
+    background: var(--accent); color: #fff; border: 0;
+    padding: .7rem 1.2rem; border-radius: .4rem; cursor: pointer;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+  }
+  button.secondary { background: var(--card); color: var(--fg); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  /* Primary submits sit at the end of a form, under the fields — give them room.
+     Inline actions (nav sign-out, the .secondary row buttons) are excluded. */
+  form > button[type=submit]:not(.link):not(.secondary),
+  form > input[type=submit] { margin-top: var(--space-2); }
+  input[type=text], input[type=email], input[type=number] {
+    font: inherit; width: 100%; padding: .6rem .7rem;
+    background: var(--card); color: var(--fg);
+    border: 1px solid var(--line); border-radius: .4rem;
+  }
+  button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--blue); outline-offset: 2px;
+  }
+  /* Fields show no focus state at all. */
+  input:focus, input:focus-visible, select:focus, select:focus-visible { outline: none; }
+  select {
+    font: inherit; background: var(--card); color: var(--fg);
+    border: 1px solid var(--line); border-radius: .3rem; padding: .3rem;
+    cursor: pointer; transition: border-color .12s ease;
+    /* Above a stretched card link, so choosing a rank isn't a navigation. */
+    position: relative; z-index: 1;
+  }
+  label { display: block; font-size: .85rem; color: var(--dim); margin-top: var(--space-3); }
+  .err { color: #ff6b6b; font-size: .9rem; margin: var(--space-2) 0; }
+  .ok { color: var(--accent); font-size: .9rem; margin: var(--space-2) 0; }
+
+  /* The margin reset goes in :where() so it carries no specificity. Written
+     plainly it ties with the rhythm rules above and, coming later, wins — which
+     left every list that follows a heading hugging it while paragraphs didn't. */
+  ol.films, ul.films { list-style: none; padding: 0; }
+  :where(ol.films, ul.films) { margin: 0; }
+  ol.films li, ul.films li {
+    display: flex; align-items: center; gap: var(--space-3);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: .5rem; padding: var(--space-3); margin-bottom: var(--space-2);
+    transition: border-color .12s ease;
+  }
+  ol.films li:last-child, ul.films li:last-child { margin-bottom: 0; }
+  .pos { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 1.4rem; }
+  .poster { width: 46px; min-width: 46px; border-radius: .25rem; display: block; background: var(--line); }
+  .poster.big { width: 70px; min-width: 70px; }
+  .title { flex: 1; min-width: 0; }
+  /* Not scoped to .title: the same secondary line shows up outside a film row —
+     on the club cards, for one — and should read the same there. */
+  .year, .meta { color: var(--dim); font-size: .85rem; font-family: var(--sans); font-weight: 400; }
+  .rating { color: var(--accent); font-size: .85rem; }
+
+  /* Members. Names are set in the bold sans, like Letterboxd's member rows. */
+  .people { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0; list-style: none; margin: 0; }
+  .people li {
+    display: flex; background: var(--card); border: 1px solid var(--line);
+    border-radius: 1.4rem; font-size: .9rem;
+  }
+  .people li.pending { color: var(--warn); border-color: var(--warn); }
+  /* The row itself is the link, so the padding and layout live on it rather
+     than on the li — the whole chip is the hit area, avatar included. */
+  .people .member {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: .2rem .8rem .2rem .25rem; text-decoration: none; color: inherit;
+  }
+  .people .member-name {
+    font-family: var(--sans); font-weight: 700; font-size: 13px;
+    color: rgb(170, 187, 204);
+  }
+
+  /* The little round face beside a name, as on Letterboxd. */
+  .avatar {
+    width: 1.5rem; height: 1.5rem; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; overflow: hidden;
+    background: var(--line); color: var(--dim);
+    font-size: .75rem; font-weight: 600; line-height: 1;
+    text-transform: uppercase; font-family: var(--sans);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: .5rem; padding: var(--space-4); }
+  .card > :first-child { margin-top: 0; }
+  .card > :last-child { margin-bottom: 0; }
+
+  /* The mode badge: an icon, the label, and the explanation folded into a
+     hoverable marker rather than a paragraph nobody reads twice. */
+  .mode { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+  .mode .icon {
+    font-size: 1.1rem; line-height: 1; color: var(--accent);
+    flex: 0 0 auto; width: 1.2rem; text-align: center;
+  }
+  .mode .label { font-weight: 600; color: #fff; }
+  .info {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.1rem; height: 1.1rem; border-radius: 50%;
+    border: 1px solid var(--dim); color: var(--dim);
+    font-size: .7rem; font-weight: 700; font-style: normal;
+    cursor: help; user-select: none; flex: 0 0 auto;
+  }
+  .mode-notes { margin: var(--space-2) 0 0; padding: 0; list-style: none; font-size: .85rem; color: var(--dim); }
+  .mode-notes li { display: flex; gap: var(--space-2); margin-bottom: .35rem; }
+  .mode-notes .icon { color: var(--accent); width: 1.2rem; text-align: center; flex: 0 0 auto; }
+  .mode-notes b { color: var(--fg); font-weight: 600; }
+
+  /* The one-time "how this works" panel. A card, but with the dismiss in the
+     corner, so the text can run the full width without dodging it. */
+  .onboarding {
+    position: relative; margin: 0 0 var(--space-7);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: .5rem; padding: var(--space-4);
+  }
+  .onboarding h2 { margin: 0 var(--space-5) 0 0; }
+  .onboarding .how { margin: var(--space-4) 0 0; padding-left: 1.1rem; }
+  .onboarding .how li { margin-bottom: var(--space-3); }
+  .onboarding .how li:last-child { margin-bottom: 0; }
+  .onboarding .how strong { color: #fff; }
+  .onboarding > p:last-child { margin-bottom: 0; }
+  .onboarding .dismiss { position: absolute; top: var(--space-2); right: var(--space-2); margin: 0; }
+  .onboarding .dismiss button {
+    background: none; border: 0; padding: var(--space-2);
+    color: var(--dim); font-size: 1.2rem; line-height: 1;
+  }
+
+  /* The backdrop assumes it's the first thing in main and pulls up into the
+     header; with the panel above it, it's just a picture in the page. */
+  .onboarding ~ .backdrop { margin-top: 0; }
+
+  /* The wide still behind a settled round, faded out on every edge so it sits
+     under the page rather than on top of it. */
+  .backdrop {
+    position: relative; height: 12rem; overflow: hidden;
+    /* Pulled up through main's padding so the still starts at the header, and
+       out through the column so it spans the window — the text stays in the
+       column, the picture doesn't. */
+    margin: calc(var(--space-6) * -1) calc(50% - 50vw) var(--space-5);
+  }
+  .backdrop img {
+    width: 100%; height: 100%; object-fit: cover; object-position: center center;
+    display: block;
+  }
+  .backdrop::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(to bottom, rgba(20, 24, 28, .35) 0%, rgba(20, 24, 28, 0) 30%, var(--wash-bottom) 100%),
+      linear-gradient(to right, var(--wash-bottom) 0%, rgba(20, 24, 28, 0) 22%, rgba(20, 24, 28, 0) 78%, var(--wash-bottom) 100%);
+  }
+  @media (min-width: 46rem) { .backdrop { height: 26rem; } }
+
+  /* Club cards on the all-clubs page: bigger than a film row, and carrying
+     enough that you can tell what's happening without opening one. */
+  ul.clubs { list-style: none; padding: 0; }
+  :where(ul.clubs) { margin: 0; }
+  ul.clubs li {
+    position: relative;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: .5rem; padding: var(--space-4); margin-bottom: var(--space-3);
+    transition: border-color .12s ease;
+  }
+  ul.clubs li:last-child { margin-bottom: 0; }
+  /* A club is not a film: the card's name takes the heading label style, and
+     the posters below it carry the serif. */
+  .club-name {
+    font-family: var(--sans); font-weight: normal; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .5px; color: #fff;
+  }
+  .club-facts {
+    display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2);
+    font-size: .85rem; color: var(--dim); margin-top: var(--space-2);
+  }
+  /* A dot between the facts so mode, members and rounds read as three things
+     rather than one run-on line. It hangs off the end of each fact rather than
+     the start of the next, so a wrapped line reads as continuing. */
+  .club-facts span:not(:last-child)::after {
+    content: "|"; color: currentColor; margin-left: var(--space-2);
+  }
+  /* The card reads as four groups — the name and its facts, the faces, where
+     the round stands, the posters. The name keeps its facts close; everything
+     after that is a group of its own and gets the wider gap. */
+  .club-status { margin-top: var(--space-4); font-size: .9rem; }
+  .club-status .label { color: var(--dim); }
+  /* The films in play: the winner alone, or the whole ballot as a row. */
+  .poster-row { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+  .poster-row img { width: 46px; min-width: 46px; border-radius: .25rem; display: block; background: var(--line); }
+  .poster-row.one img { width: 70px; min-width: 70px; }
+  .faces { display: flex; margin-top: var(--space-1); }
+  .faces .avatar { margin-right: -.4rem; border: 2px solid var(--card); }
+  .faces .avatar:last-child { margin-right: 0; }
+
+  /* Hover only where hovering is a thing. On a phone none of this applies,
+     so nothing sticks in a half-hovered state after a tap. */
+  @media (hover: hover) and (pointer: fine) {
+    a:hover { color: #fff; }
+    .title a:hover, a.title-link:hover, h1 a:hover, h2 a:hover { color: #fff; text-decoration: none; }
+    .wordmark:hover .dot { color: #ff8001; }
+    nav a:hover, nav button.link:hover, .site-footer a:hover { color: #fff; cursor: pointer; }
+    .whoami .who:hover { color: #fff; }
+    .whoami button.link:hover, .whoami .menu a:hover { color: #fff; background: var(--line); cursor: pointer; }
+    button:hover:not(:disabled):not(.link), input[type=submit]:hover { background: var(--accent-dark); color: #fff; }
+    button.secondary:hover:not(:disabled) { background: var(--line); border-color: var(--dim); color: #fff; }
+    select:hover { border-color: var(--dim); }
+    ol.films li:hover, ul.films li:hover { border-color: var(--dim); }
+    .people li:hover { border-color: var(--dim); }
+    .people a.member:hover .member-name { color: #fff; }
+    ul.clubs li:hover, li.card-link:hover { border-color: var(--blue); }
+    .handle:hover { color: #fff; }
+    .info:hover { border-color: #fff; color: #fff; }
+    .onboarding .dismiss button:hover { color: #fff; background: none; }
+  }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <a class="wordmark" href="/">Boxd<span class="dot">.</span>Club</a>
+    <%# Signing out belongs to the site, not to any one page, so it lives here
+        rather than being repeated in every view's nav. %>
+    <% if current_user %>
+      <details class="whoami">
+        <summary class="who">
+          <%== render("avatar", locals: { user: current_user }) %>
+          <span class="name"><%= current_user.email %></span>
+          <span class="caret" aria-hidden="true"></span>
+        </summary>
+        <div class="menu">
+          <%# Development only, and only for an admin: the email previews are a
+              developer's tool, and /dev/emails 404s everywhere else anyway — a
+              link to it in production would be a link to a 404. %>
+          <% if APP_ENV == "development" && current_user.admin %>
+            <a href="/dev/emails">Email previews</a>
+          <% end %>
+          <form method="post" action="/logout">
+            <%== csrf_tag("/logout") %>
+            <button class="link" type="submit">Sign out</button>
+          </form>
+        </div>
+      </details>
+    <% end %>
+  </div>
+</header>
+<div class="page">
+<main>
+<% if flash["notice"] %><p class="ok"><%= flash["notice"] %></p><% end %>
+<% if flash["error"] %><p class="err"><%= flash["error"] %></p><% end %>
+<%# Here rather than in one view: an invite link lands on the club page, the
+    home page or the welcome page depending on how it was sent, and the panel
+    should be waiting on whichever one that is. %>
+<% if current_user&.needs_onboarding? %>
+  <%== render("onboarding", locals: { path: request.path }) %>
+<% end %>
+<%# Raw on purpose: the view escapes its own interpolations, and the render
+    plugin runs in escape mode, so escaping here would escape the whole page. %>
+<%== yield %>
+</main>
+</div>
+<footer class="site-footer">
+  <div class="inner">
+    <span>A private movie club, run off <a href="https://letterboxd.com/" target="letterboxd">Letterboxd</a> watchlists.</span>
+    <span>Not affiliated with Letterboxd.</span>
+  </div>
+</footer>
+<script>
+  // The menu opens and closes on its own; this only adds the two dismissals
+  // a bare <details> doesn't give you — clicking away, and Escape.
+  (function () {
+    var menu = document.querySelector('.whoami');
+    if (!menu) return;
+    document.addEventListener('click', function (e) {
+      if (menu.open && !menu.contains(e.target)) menu.open = false;
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && menu.open) {
+        menu.open = false;
+        menu.querySelector('summary').focus();
+      }
+    });
+  })();
+</script>
+</body>
+</html>

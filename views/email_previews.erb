@@ -1,0 +1,16 @@
+<%# Development only — see the /dev/emails routes. %>
+<nav>
+  <a href="/">All clubs</a>
+</nav>
+
+<h1>Email previews</h1>
+
+<section class="section">
+  <p class="dim">
+    Every email the app sends, rendered from fixtures rather than from your data.
+    Nothing here sends, and the links inside each email are dead.
+  </p>
+  <%# Just the row — each preview page says what its own email covers, so the
+      index doesn't repeat it. %>
+  <%== render("email_preview_nav", locals: { previews: previews, current: nil }) %>
+</section>

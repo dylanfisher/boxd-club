@@ -1,0 +1,13 @@
+<%= club.name %>, <%= round.label.downcase %>
+
+<%= club.name %> is waiting on you. The round can't close until everyone has ranked
+these — <%= waiting_on %> of us still haven't.
+
+<% candidates.each_with_index do |(cand, film), i| -%>
+  <%= i + 1 %>. <%= film.display %>
+<% end -%>
+
+<%= club_url %>
+
+--
+Unsubscribe: <%= unsub_url %>

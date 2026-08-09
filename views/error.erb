@@ -1,0 +1,18 @@
+<%# The wordmark is in the header now, so the heading is the actual problem.
+    Keep `message` short enough to sit on one line as a heading and put the
+    rest, if there is any, in `detail`. `quote` is the 404's consolation
+    prize. %>
+<h1><%= message %></h1>
+<% if detail %>
+  <section class="section">
+    <p><%= detail %></p>
+  </section>
+<% end %>
+<% if quote %>
+  <section class="section">
+    <blockquote class="quote">
+      <p class="lede"><%= quote.text %></p>
+      <cite><%= quote.credit %></cite>
+    </blockquote>
+  </section>
+<% end %>

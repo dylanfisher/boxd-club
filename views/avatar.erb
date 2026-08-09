@@ -1,0 +1,12 @@
+<%# A member's face, wherever a member is named.
+
+    Three states, in order: a copy we hold (Letterboxd uploads — see
+    lib/avatars.rb), a hotlinked Gravatar, or their initial in a grey circle for
+    an account with no picture at all.
+
+    Decorative: the name is always right next to it, so the image carries no
+    alt text of its own rather than repeating the name to a screen reader. %>
+<% src = user.avatar_src %>
+<span class="avatar" aria-hidden="true"><%
+  %><% if src %><img src="<%= src %>" alt="" loading="lazy" width="24" height="24"><% else %><%= user.initial %><% end %><%
+%></span>

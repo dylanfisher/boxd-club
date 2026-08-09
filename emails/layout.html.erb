@@ -1,0 +1,363 @@
+<%# Every HTML part is wrapped in this. It's Lee Munroe's responsive email
+    template — github.com/leemunroe/responsive-html-email-template — with the
+    site's palette in place of his. The table skeleton, the class names and the
+    client fixes at the bottom of the stylesheet are his and worth keeping as
+    they are; the colours, the type stack and the footer are ours.
+
+    Two stylesheets, on purpose: the <style> block below does the layout and the
+    responsive rules, and the colours are *also* set inline on the elements that
+    carry them. Gmail keeps embedded styles but several clients drop them, and a
+    dark template that loses its background while keeping its pale text is
+    unreadable rather than merely plain.
+
+    Locals: subject (the <title> and the preheader), body (the message itself),
+    unsub_url.
+
+    This comment swallows its own trailing newline so the part starts at the
+    doctype: a blank first line is enough for some clients to treat a part as
+    text rather than as HTML. -%>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title><%= subject %></title>
+    <%# Tells a client this design is already dark, so it doesn't invert it. %>
+    <meta name="color-scheme" content="dark">
+    <meta name="supported-color-schemes" content="dark">
+    <style media="all" type="text/css">
+    /* -------------------------------------
+    GLOBAL RESETS
+------------------------------------- */
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      font-size: 16px;
+      line-height: 1.55;
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    table {
+      border-collapse: separate;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+      width: 100%;
+    }
+
+    table td {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      vertical-align: top;
+    }
+    /* -------------------------------------
+    BODY & CONTAINER
+------------------------------------- */
+
+    body {
+      background-color: #14181c;
+      color: #d8e0e8;
+      margin: 0;
+      padding: 0;
+    }
+
+    .body {
+      background-color: #14181c;
+      width: 100%;
+    }
+
+    .container {
+      margin: 0 auto !important;
+      max-width: 600px;
+      padding: 0;
+      padding-top: 24px;
+      width: 600px;
+    }
+
+    .content {
+      box-sizing: border-box;
+      display: block;
+      margin: 0 auto;
+      max-width: 600px;
+      padding: 0;
+    }
+    /* -------------------------------------
+    HEADER, FOOTER, MAIN
+------------------------------------- */
+
+    .main {
+      background: #1c2228;
+      border: 1px solid #2c3440;
+      border-radius: 16px;
+      width: 100%;
+    }
+
+    .wrapper {
+      box-sizing: border-box;
+      padding: 24px;
+    }
+
+    .footer {
+      clear: both;
+      padding-top: 24px;
+      text-align: center;
+      width: 100%;
+    }
+
+    .footer td,
+    .footer p,
+    .footer span,
+    .footer a {
+      color: #8b9aa8;
+      font-size: 13px;
+      text-align: center;
+    }
+    /* -------------------------------------
+    TYPOGRAPHY
+------------------------------------- */
+
+    p {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      font-weight: normal;
+      margin: 0;
+      margin-bottom: 16px;
+      color: #d8e0e8;
+    }
+
+    a {
+      color: #40bcf4;
+      text-decoration: underline;
+    }
+
+    /* The line above a round's heading: the club page sets it the same way. */
+    .eyebrow {
+      color: #8b9aa8;
+      font-size: 13px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    /* Director, rating, how many of us want it. */
+    .meta {
+      color: #8b9aa8;
+      font-size: 14px;
+    }
+
+    .warn {
+      color: #e0a020;
+      font-size: 14px;
+    }
+
+    .film td {
+      padding-bottom: 16px;
+    }
+
+    .rank {
+      color: #8b9aa8;
+      padding-right: 8px;
+    }
+
+    .title-link {
+      color: #d8e0e8 !important;
+      text-decoration: none !important;
+      font-weight: bold;
+    }
+    /* -------------------------------------
+    BUTTONS
+------------------------------------- */
+
+    .btn {
+      box-sizing: border-box;
+      min-width: 100% !important;
+      width: 100%;
+    }
+
+    .btn > tbody > tr > td {
+      padding-bottom: 16px;
+    }
+
+    .btn table {
+      width: auto;
+    }
+
+    .btn table td {
+      background-color: #00c030;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .btn a {
+      background-color: #00c030;
+      border: solid 2px #00c030;
+      border-radius: 4px;
+      box-sizing: border-box;
+      color: #06240e;
+      cursor: pointer;
+      display: inline-block;
+      font-size: 16px;
+      font-weight: bold;
+      margin: 0;
+      padding: 12px 24px;
+      text-decoration: none;
+    }
+
+    @media all {
+      .btn-primary table td:hover {
+        background-color: #00a028 !important;
+      }
+      .btn-primary a:hover {
+        background-color: #00a028 !important;
+        border-color: #00a028 !important;
+      }
+    }
+
+    /* -------------------------------------
+    OTHER STYLES THAT MIGHT BE USEFUL
+------------------------------------- */
+
+    .last {
+      margin-bottom: 0;
+    }
+
+    .first {
+      margin-top: 0;
+    }
+
+    .align-center {
+      text-align: center;
+    }
+
+    .preheader {
+      color: transparent;
+      display: none;
+      height: 0;
+      max-height: 0;
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      mso-hide: all;
+      visibility: hidden;
+      width: 0;
+    }
+
+    /* -------------------------------------
+    RESPONSIVE AND MOBILE FRIENDLY STYLES
+------------------------------------- */
+
+    @media only screen and (max-width: 640px) {
+      .main p,
+      .main td,
+      .main span {
+        font-size: 16px !important;
+      }
+      .wrapper {
+        padding: 8px !important;
+      }
+      .content {
+        padding: 0 !important;
+      }
+      .container {
+        padding: 0 !important;
+        padding-top: 8px !important;
+        width: 100% !important;
+      }
+      .main {
+        border-left-width: 0 !important;
+        border-radius: 0 !important;
+        border-right-width: 0 !important;
+      }
+      .btn table {
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+      .btn a {
+        font-size: 16px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+    }
+    /* -------------------------------------
+    PRESERVE THESE STYLES IN THE HEAD
+------------------------------------- */
+
+    @media all {
+      .ExternalClass {
+        width: 100%;
+      }
+      .ExternalClass,
+      .ExternalClass p,
+      .ExternalClass span,
+      .ExternalClass font,
+      .ExternalClass td,
+      .ExternalClass div {
+        line-height: 100%;
+      }
+      .apple-link a {
+        color: inherit !important;
+        font-family: inherit !important;
+        font-size: inherit !important;
+        font-weight: inherit !important;
+        line-height: inherit !important;
+        text-decoration: none !important;
+      }
+      #MessageViewBody a {
+        color: inherit;
+        text-decoration: none;
+        font-size: inherit;
+        font-family: inherit;
+        font-weight: inherit;
+        line-height: inherit;
+      }
+    }
+    </style>
+  </head>
+  <body style="background-color:#14181c;color:#d8e0e8;margin:0;padding:0">
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body" bgcolor="#14181c" style="background-color:#14181c">
+      <tr>
+        <td>&nbsp;</td>
+        <td class="container">
+          <div class="content">
+
+            <!-- START CENTERED CONTAINER -->
+            <%# The line a client shows next to the subject in the list. %>
+            <span class="preheader"><%= subject %></span>
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main" bgcolor="#1c2228" style="background:#1c2228;border:1px solid #2c3440;border-radius:16px">
+
+              <!-- START MAIN CONTENT AREA -->
+              <tr>
+                <td class="wrapper" style="padding:24px;color:#d8e0e8">
+                  <%= body %>
+                </td>
+              </tr>
+
+              <!-- END MAIN CONTENT AREA -->
+              </table>
+
+            <!-- START FOOTER -->
+            <div class="footer">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td class="content-block" style="color:#8b9aa8;font-size:13px;text-align:center;padding-bottom:8px">
+                    A private movie club, run off Letterboxd watchlists.
+                  </td>
+                </tr>
+                <tr>
+                  <td class="content-block" style="color:#8b9aa8;font-size:13px;text-align:center">
+                    Don't want these? <a href="<%= unsub_url %>" style="color:#8b9aa8;text-decoration:underline">Unsubscribe</a>.
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- END FOOTER -->
+
+<!-- END CENTERED CONTAINER --></div>
+        </td>
+        <td>&nbsp;</td>
+      </tr>
+    </table>
+  </body>
+</html>

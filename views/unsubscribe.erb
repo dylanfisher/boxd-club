@@ -1,0 +1,10 @@
+<h1>Unsubscribe</h1>
+
+<section class="section">
+  <p>Stop sending ballots to <span class="dim"><%= user.email %></span>?</p>
+  <form method="post" action="/unsubscribe/<%= token %>">
+    <%== csrf_tag("/unsubscribe/#{token}") %>
+    <button type="submit">Unsubscribe</button>
+  </form>
+  <p class="dim">Your watchlist stops counting toward what the group picks.</p>
+</section>

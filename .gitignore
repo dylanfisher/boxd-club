@@ -1,0 +1,22 @@
+db/*.db
+db/*.db-wal
+db/*.db-shm
+db/backups/*.db
+.env
+.bundle/
+vendor/bundle/
+tmp/
+db/avatars/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
