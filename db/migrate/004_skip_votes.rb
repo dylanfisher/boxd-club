@@ -5,9 +5,10 @@
 # vote to skip; once half the voting members have, the round closes unwatched
 # and the next one opens.
 #
-# The threshold is half, rounded up — 1 of 2, 2 of 3, 2 of 4 — so "everyone
-# skips" and "most people skip" both work, and one person can't skip a film for
-# the whole club unless the club is two people.
+# The threshold is half rounded up, floored at two — 2 of 2, 2 of 3, 2 of 4,
+# 3 of 5 — so "everyone skips" and "most people skip" both work, and nobody
+# ends a round for the club single-handed. A solo club is the exception: its
+# one member is the whole club, so their vote carries.
 #
 # A skipped round keeps its winning_film_id: it's still what that round chose,
 # and the matcher still treats it as spent so the same film isn't offered again

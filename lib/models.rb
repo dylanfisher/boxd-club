@@ -193,8 +193,13 @@ class Round < Sequel::Model
   def skip_voter_ids = DB[:skip_votes].where(round_id: id).select_map(:user_id)
   def skip_voters = club.voting_members.select { |u| skip_voter_ids.include?(u.id) }
   def skipped_by?(user) = !user.nil? && skip_voter_ids.include?(user.id)
-  # Half the club, rounded up: 1 of 2, 2 of 3, 2 of 4.
-  def skips_needed = [(club.voting_members.size / 2.0).ceil, 1].max
+  # Half the club rounded up, but never fewer than two, so no one skips a film
+  # on their own: 2 of 2, 2 of 3, 2 of 4, 3 of 5. A solo club is the exception —
+  # its one member is the whole club, so one vote carries.
+  def skips_needed
+    size = club.voting_members.size
+    [[[(size / 2.0).ceil, 2].max, size].min, 1].max
+  end
 end
 
 class Candidate < Sequel::Model

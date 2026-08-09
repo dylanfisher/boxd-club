@@ -42,7 +42,8 @@ One process, one container, no Redis, no worker, no build step.
   because there is no date it's due.
 - **Voting to skip** is the way out of a decided round nobody can finish — the
   film isn't streaming anywhere, or the club has gone off it. Half the members,
-  rounded up (1 of 2, 2 of 3, 2 of 4), ends the round and opens the next. The
+  rounded up and never fewer than two (2 of 2, 2 of 3, 2 of 4, 3 of 5), ends the
+  round and opens the next — nobody skips a film for the club alone. The
   film still counts as spent, so it isn't offered again.
 - **Rounds are numbered per club** — "round 5" — from `rounds.number`, assigned
   when the round opens and never reused. Every email about a round says which
