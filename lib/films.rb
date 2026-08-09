@@ -33,7 +33,7 @@ module Films
       details_fetched_at: Time.now
     )
     film
-  rescue Letterboxd::Error, SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
+  rescue *Letterboxd::TRANSPORT_ERRORS => e
     # A missing director is cosmetic. Never let it stop a round opening.
     warn "[films] #{film.slug}: #{e.class}: #{e.message}"
     film

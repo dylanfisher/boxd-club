@@ -50,7 +50,7 @@ module Clubs
         Letterboxd.check_list(owner, slug)
       rescue Letterboxd::NotFound
         raise Invalid, "No public list at letterboxd.com/#{owner}/list/#{slug}/."
-      rescue Letterboxd::Error, SocketError, SystemCallError
+      rescue *Letterboxd::TRANSPORT_ERRORS
         nil # Letterboxd is being cagey. Take the URL and let the fetch sort it out.
       end
       raise Invalid, "That list is empty or private." if count&.zero?

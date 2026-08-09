@@ -27,6 +27,7 @@
 # sitting on their watchlist return 404, watched ones return 200.
 
 require "net/http"
+require "openssl"
 require "uri"
 require "csv"
 require "json"
@@ -81,6 +82,25 @@ module Letterboxd
   # Letterboxd served a Cloudflare interstitial. Retrying immediately won't help.
   RateLimited = Class.new(Error)
   NotFound = Class.new(Error)
+
+  # Every way a request to Letterboxd can fail without it being our bug.
+  #
+  # One list, because it was three hand-written ones and they drifted: two sites
+  # rescued SocketError and SystemCallError but not the timeouts, which are
+  # RuntimeError descendants and share no ancestor with either — so a Letterboxd
+  # that hung, rather than refusing the connection, came back as a 500 on the
+  # signup form. Rescue `*TRANSPORT_ERRORS` rather than spelling any of it out
+  # again. Order still matters where NotFound or RateLimited mean something
+  # specific: rescue those first, since both descend from Error.
+  TRANSPORT_ERRORS = [
+    Error,                              # ours: an unexpected status, or a challenge page
+    SocketError,                        # DNS didn't resolve
+    SystemCallError,                    # connection refused, reset, unreachable
+    Net::OpenTimeout, Net::ReadTimeout, # connected, then nothing — the slowest failure
+    OpenSSL::SSL::SSLError,             # a bad or expired certificate
+    EOFError,                           # the connection closed mid-response
+    Net::HTTPBadResponse                # what came back wasn't HTTP
+  ].freeze
 
   # "Citizen Kane (1941)" -> ["Citizen Kane", 1941]
   DISPLAY_NAME = /\A(.*)\s+\((\d{4})\)\z/
@@ -355,7 +375,7 @@ module Letterboxd
   rescue RateLimited => e
     warn "[fetch] #{user.email}: rate-limited, skipping — #{e.message}"
     nil
-  rescue Error, SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
+  rescue *TRANSPORT_ERRORS => e
     warn "[fetch] #{user.email}: #{e.class}: #{e.message}"
     nil
   end
@@ -370,7 +390,7 @@ module Letterboxd
     count = store_list!(club, entries)
     puts "[fetch] club #{club.slug}: #{count} films from #{club.list_url}"
     count
-  rescue Error, SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
+  rescue *TRANSPORT_ERRORS => e
     warn "[fetch] club #{club.slug}: #{e.class}: #{e.message}"
     nil
   end

@@ -540,7 +540,11 @@ class App < Roda
       return "No Letterboxd account called #{username}."
     rescue Letterboxd::RateLimited
       nil # Letterboxd is being cagey; accept the name and let the fetch sort it out.
-    rescue Letterboxd::Error, SocketError, SystemCallError
+    rescue *Letterboxd::TRANSPORT_ERRORS
+      # Letterboxd being unreachable is not a reason to refuse somebody's
+      # username — this check is a courtesy, and the nightly fetch will find
+      # out soon enough. This is also the signup form, so raising here would
+      # mean a new member couldn't finish joining.
       nil
     end
 

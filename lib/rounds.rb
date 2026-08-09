@@ -188,7 +188,7 @@ module Rounds
         round_id: round.id, user_id: user.id, detected_at: Time.now
       )
       puts "[round] #{round.id}: #{user.letterboxd_username} logged #{film.title}"
-    rescue Letterboxd::Error, SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
+    rescue *Letterboxd::TRANSPORT_ERRORS => e
       warn "[round] #{round.id}: log check for #{user.letterboxd_username} failed: #{e.class}: #{e.message}"
     end
 

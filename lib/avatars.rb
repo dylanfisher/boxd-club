@@ -73,7 +73,7 @@ module Avatars
       user.update(avatar_url: nil, avatar_file: file, avatar_fetched_at: Time.now)
     end
     user
-  rescue Letterboxd::Error, SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
+  rescue *Letterboxd::TRANSPORT_ERRORS => e
     warn "[avatar] #{user.letterboxd_username}: #{e.class}: #{e.message}"
     nil
   end

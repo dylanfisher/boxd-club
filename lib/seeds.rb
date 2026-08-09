@@ -66,7 +66,7 @@ module Seeds
 
       write(username, entries)
       puts "  #{username}: #{entries.size} films -> #{path(username).delete_prefix("#{APP_ROOT}/")}"
-    rescue Letterboxd::Error, SocketError, SystemCallError => e
+    rescue *Letterboxd::TRANSPORT_ERRORS => e
       warn "  #{username}: #{e.class}: #{e.message}"
     end
   end
