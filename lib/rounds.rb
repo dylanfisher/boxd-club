@@ -52,7 +52,17 @@ module Rounds
     end
 
     round = nil
-    DB.transaction do
+    # `mode: :immediate` takes SQLite's writer lock before the first statement,
+    # which is what makes the re-read below a check rather than a guess: two
+    # threads that both passed the cheap check at the top would otherwise both
+    # see no current round here and both insert, leaving the club with two open
+    # rounds and every member with two ballots. Other adapters ignore the option.
+    DB.transaction(mode: :immediate) do
+      if (existing = club.current_round)
+        warn "[round] club #{club.slug}: round #{existing.id} is #{existing.state}, not opening another"
+        next
+      end
+
       round = Round.create(
         club_id: club.id, opened_at: Time.now, state: "open",
         number: club.next_round_number
@@ -64,6 +74,8 @@ module Rounds
         )
       end
     end
+    # Lost the race. The thread that won has already sent the ballots.
+    return nil if round.nil?
 
     # The slow half, and all of it after the round is committed: scraping a
     # film page each for the handful on the ballot, then a mailbox each for the
@@ -197,9 +209,25 @@ module Rounds
     mark_watched!(round, deliver: deliver)
   end
 
+  # Claims a state change, for the transitions that end a round and open the
+  # next one. Only one caller can win: SQLite serialises writes, so a
+  # conditional UPDATE that reports how many rows it touched is a lock, the
+  # same one config/schedule.rb uses to stop a redeploy re-firing a job.
+  #
+  # Worth having because both callers can genuinely arrive twice at once — two
+  # `check` threads on the same decided round, or two members' skip votes
+  # landing together — and each one goes on to open the next round.
+  def claim!(round, from:, to:, **fields)
+    return false unless Round.where(id: round.id, state: from).update(state: to, **fields) == 1
+
+    round.refresh
+    true
+  end
+
   # Closes a round out and immediately starts the next one.
   def mark_watched!(round, deliver: :now)
-    round.update(state: "watched", watched_at: Time.now)
+    return nil unless claim!(round, from: "decided", to: "watched", watched_at: Time.now)
+
     puts "[round] #{round.id} watched by everyone — opening the next one"
     open!(round.club, deliver: deliver)
     round
@@ -232,7 +260,8 @@ module Rounds
   # The film keeps its place in history and stays spent as far as the matcher
   # is concerned — a film the club voted past shouldn't come back next week.
   def skip!(round, deliver: :now)
-    round.update(state: "skipped", skipped_at: Time.now)
+    return nil unless claim!(round, from: "decided", to: "skipped", skipped_at: Time.now)
+
     puts "[round] #{round.id} skipped by vote — opening the next one"
     open!(round.club, deliver: deliver)
     round

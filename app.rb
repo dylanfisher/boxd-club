@@ -455,18 +455,31 @@ class App < Roda
 
           # All four deliver on a background thread: each one can end a round
           # and open the next, which means scraping a film page per candidate
-          # and an SMTP round-trip per member. The state change is committed
-          # before the response either way, so the page this redirects to is
-          # already right. "check" itself stays inline — asking Letterboxd who
-          # has logged the winner is the entire point of pressing it.
-          case action
-          when "open"    then Rounds.open!(club, deliver: :later)
-          when "tally"   then round && Rounds.force_tally!(round, deliver: :later)
-          when "watched" then round&.decided? && Rounds.mark_watched!(round, deliver: :later)
-          when "check"   then round&.decided? && Rounds.check_logs!(round, deliver: :later)
-          end
+          # and an SMTP round-trip per member. The first three commit their
+          # state change before the response, so the page this redirects to is
+          # already right.
+          #
+          # "check" is the exception, and goes onto a thread whole rather than
+          # just its delivery: it asks Letterboxd once per member who hasn't
+          # logged the winner yet, and a Letterboxd that hangs rather than
+          # refuses turns that into 45 seconds of timeout each. Nothing is
+          # committed before the response, so this one says so below.
+          started = case action
+                    when "open"    then Rounds.open!(club, deliver: :later)
+                    when "tally"   then round && Rounds.force_tally!(round, deliver: :later)
+                    when "watched" then round&.decided? && Rounds.mark_watched!(round, deliver: :later)
+                    when "check"   then round&.decided? && Rounds.in_background { Rounds.check_logs!(round) }
+                    end
 
-          flash["notice"] = "Done."
+          # "check" only promises a result when a thread actually went out. With
+          # no round, or one still open, there is nothing to reload for.
+          flash["notice"] = if action != "check"
+                              "Done."
+                            elsif started
+                              "Checking Letterboxd — reload in a minute."
+                            else
+                              "No decided round to check."
+                            end
           r.redirect "/admin/clubs/#{club.slug}"
         end
       end
