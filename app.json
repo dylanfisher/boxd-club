@@ -1,0 +1,15 @@
+{
+  "healthchecks": {
+    "web": [
+      {
+        "type": "startup",
+        "name": "web responds and the schema exists",
+        "path": "/up",
+        "attempts": 5,
+        "wait": 5,
+        "timeout": 10,
+        "initialDelay": 5
+      }
+    ]
+  }
+}

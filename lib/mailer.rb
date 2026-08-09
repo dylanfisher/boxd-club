@@ -34,11 +34,16 @@ module Mailer
     text = render_part(template, :text, **parts)
     html = render_part(template, :html, **parts)
     from = ENV.fetch("MAIL_FROM", "Boxd Club <boxd@localhost>")
+    # Receivers check whether the From domain accepts mail, and someone hitting
+    # reply should reach a person. Falls back to From when unset.
+    reply_to = ENV["MAIL_REPLY_TO"]
 
     mail = Mail.new do
       to      to
       from    from
       subject subject
+
+      reply_to reply_to if reply_to
 
       # RFC 8058: lets the client's native unsubscribe button do the right
       # thing instead of people hunting for the link.

@@ -63,6 +63,18 @@ class App < Roda
   end
 
   route do |r|
+    # Deploy healthcheck. Touches the database rather than just returning 200:
+    # the failure this has to catch is a container that boots fine and has no
+    # schema, which an empty-bodied check would call healthy.
+    r.get "up" do
+      # schema_info rather than SELECT 1: a SELECT of a constant succeeds
+      # against a database with no tables at all, which is exactly the state
+      # this is meant to fail on.
+      DB[:schema_info].get(:version)
+      response["Content-Type"] = "text/plain"
+      "ok"
+    end
+
     r.root do
       if current_user
         view("home", locals: { user: current_user, clubs: current_user.clubs_dataset.order(:name).all })
@@ -113,6 +125,45 @@ class App < Roda
       r.redirect Tokens.safe_path(r.params["to"])
     end
 
+    # Changing the Letterboxd account on file. A page of its own rather than a
+    # field on the club page: it's an account-level thing, done rarely, and it
+    # throws away the watchlist we hold under the old name.
+    r.on "settings" do
+      next r.redirect("/login") unless current_user
+
+      r.get { view("settings", locals: { user: current_user, username: current_user.letterboxd_username, error: nil }) }
+
+      r.post do
+        check_csrf!
+        user = current_user
+        username = parse_username(r.params["letterboxd_username"])
+
+        # Saving the same name shouldn't cost a round-trip to Letterboxd, and
+        # shouldn't throw away a watchlist that's still correct.
+        if username == user.letterboxd_username
+          flash["notice"] = "Nothing to change."
+          next r.redirect("/settings")
+        end
+
+        error = validate_username(username, user)
+        next view("settings", locals: { user: user, username: username, error: error }) if error
+
+        user.update(letterboxd_username: username)
+        # What we hold belongs to the old account: the watchlist isn't theirs
+        # any more, and the face is the wrong face. Drop the first outright
+        # rather than let a stale one keep voting; refetch both off the
+        # response path, since neither is worth making them wait for.
+        DB[:watchlist_entries].where(user_id: user.id).delete
+        Rounds.in_background do
+          Avatars.refresh!(user, force: true)
+          Letterboxd.refresh_user!(user)
+        end
+
+        flash["notice"] = "Linked to #{username}. Your watchlist will be read again in a moment."
+        r.redirect "/settings"
+      end
+    end
+
     r.post "logout" do
       check_csrf!
       session.clear
@@ -143,8 +194,7 @@ class App < Roda
       next expired unless token
 
       check_csrf!
-      username = r.params["letterboxd_username"].to_s.strip
-                  .sub(%r{\A.*letterboxd\.com/}, "").split("/").first.to_s
+      username = parse_username(r.params["letterboxd_username"])
 
       user = token.user
       error = validate_username(username, user)
@@ -462,6 +512,12 @@ class App < Roda
            candidates: round ? round.candidate_films : [],
            history: club.rounds_dataset.order(Sequel.desc(:opened_at)).limit(20).all
          })
+  end
+
+  # People paste the whole profile URL as often as they type the name, so take
+  # either and keep only the username segment.
+  def parse_username(raw)
+    raw.to_s.strip.sub(%r{\A.*letterboxd\.com/}, "").split("/").first.to_s
   end
 
   def validate_username(username, user)

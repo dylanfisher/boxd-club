@@ -1,0 +1,32 @@
+<nav>
+  <a href="/">Your clubs</a>
+  <span class="sep" aria-hidden="true">›</span>
+  <span>Settings</span>
+</nav>
+
+<h1>Settings</h1>
+
+<section class="section">
+  <h2>Account</h2>
+  <p class="dim">Signed in as <%= user.email %>. Ask whoever runs your club if that needs to change.</p>
+</section>
+
+<section class="section">
+  <h2>Letterboxd</h2>
+  <p>We read this account's public watchlist once a week to work out what everyone wants to see.</p>
+  <% if error %><p class="err"><%= error %></p><% end %>
+  <form method="post" action="/settings">
+    <%== csrf_tag("/settings") %>
+    <p><input type="text" name="letterboxd_username" value="<%= username %>"
+              placeholder="username" autocapitalize="off" autocorrect="off" spellcheck="false"></p>
+    <p class="dim">
+      Username only &mdash; not the full URL, though we'll cope. Your watchlist has to be public.
+      <%# Said plainly here rather than behind a confirm: it's recoverable
+          (change it back and the next crawl fills it in again), but somebody
+          swapping accounts should know their votes-in-waiting go with it. %>
+      Changing this drops the watchlist we hold for you and reads the new
+      account's instead.
+    </p>
+    <button type="submit">Save</button>
+  </form>
+</section>

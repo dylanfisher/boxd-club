@@ -96,9 +96,13 @@
   }
   .whoami .menu form { margin: 0; }
   /* Every row in the menu looks the same whether it's a form's button or a
-     plain link — the only difference should be what it does. */
+     plain link — the only difference should be what it does. The button's
+     reset lives here rather than being shared with nav's: nav's sets padding
+     to 0, and coming later in the sheet it won, so the one row that was a
+     button sat tight against the menu's edge while the links were inset. */
   .whoami button.link, .whoami .menu a {
     display: block; width: 100%; text-align: left;
+    font: inherit; background: none; border: 0;
     color: var(--dim); text-decoration: none; padding: .25rem .35rem;
     border-radius: .25rem;
   }
@@ -223,7 +227,7 @@
   /* The chevron between breadcrumbs. Its own element rather than a pseudo on
      the links, so it isn't underlined and isn't part of anything's hit area. */
   nav .sep { color: currentColor; user-select: none; }
-  nav button.link, .whoami button.link {
+  nav button.link {
     background: none; padding: 0; font-weight: 400; border: 0; font-size: inherit;
   }
 
@@ -454,6 +458,7 @@
           <span class="caret" aria-hidden="true"></span>
         </summary>
         <div class="menu">
+          <a href="/settings">Settings</a>
           <%# Development only, and only for an admin: the email previews are a
               developer's tool, and /dev/emails 404s everywhere else anyway — a
               link to it in production would be a link to a 404. %>
