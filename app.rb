@@ -138,6 +138,15 @@ class App < Roda
 
       r.get { view("settings", locals: { user: current_user, username: current_user.letterboxd_username, error: nil }) }
 
+      # The way back from an unsubscribe. Without one, a one-click POST from a
+      # mail client is a permanent decision made by a mis-tap.
+      r.post "resubscribe" do
+        check_csrf!
+        current_user.update(active: true, unsubscribed_at: nil)
+        flash["notice"] = "You're back on the list."
+        r.redirect "/settings"
+      end
+
       r.post do
         check_csrf!
         user = current_user
@@ -236,7 +245,8 @@ class App < Roda
         token.user.update(active: false, unsubscribed_at: Time.now)
         Tokens.consume(raw, "unsub")
         error_page("Done — you're unsubscribed.",
-                   detail: "Ask whoever runs the club to add you back.")
+                   detail: "Your account is still here. Sign in at /login and you can " \
+                           "turn these back on from Settings.")
       end
     end
 

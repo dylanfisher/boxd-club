@@ -382,11 +382,13 @@
                     A private movie club, run off Letterboxd watchlists.
                   </td>
                 </tr>
+<% if unsub_url %>
                 <tr>
                   <td class="content-block" style="color:#8b9aa8;font-size:13px;text-align:center">
                     Don't want these? <a href="<%= unsub_url %>" style="color:#8b9aa8;text-decoration:underline">Unsubscribe</a>.
                   </td>
                 </tr>
+<% end %>
               </table>
             </div>
 

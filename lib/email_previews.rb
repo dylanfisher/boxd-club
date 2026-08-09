@@ -102,10 +102,14 @@ module EmailPreviews
   end
 
   # `subject` goes into the locals as well as the preview itself: the layout puts
-  # it in the <title> and the preheader, the same as a real send does.
+  # it in the <title> and the preheader, the same as a real send does. So does
+  # `unsub_url`, nil and all: Mailer decides per template whether a message has
+  # an unsubscribe, and a preview that showed the footer either way would be
+  # lying about the two that don't.
   def preview(name, template, subject, note, **locals)
+    unsub = Mailer.unsubscribable?(template) ? url("/unsubscribe") : nil
     { name: name, template: template, subject: subject, note: note,
-      locals: { user: user, unsub_url: url("/unsubscribe"), subject: subject }.merge(locals) }
+      locals: { user: user, unsub_url: unsub, subject: subject }.merge(locals) }
   end
 
   def ballot_locals

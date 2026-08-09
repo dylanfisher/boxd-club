@@ -12,6 +12,21 @@
 </section>
 
 <section class="section">
+  <h2>Email</h2>
+  <% if user.unsubscribed_at %>
+    <p>You unsubscribed on <%= Fmt.date(user.unsubscribed_at) %>, so we're not sending you ballots &mdash;
+      and your watchlist isn't counting toward what your clubs pick.</p>
+    <form method="post" action="/settings/resubscribe">
+      <%== csrf_tag("/settings/resubscribe") %>
+      <button type="submit">Start sending them again</button>
+    </form>
+  <% else %>
+    <p class="dim">We email you a ballot when a round opens, and the result when it closes.
+      Every one of those carries an unsubscribe link; you can turn them back on here afterwards.</p>
+  <% end %>
+</section>
+
+<section class="section">
   <h2>Letterboxd</h2>
   <p>We read this account's public watchlist once a week to work out what everyone wants to see.</p>
   <% if error %><p class="err"><%= error %></p><% end %>

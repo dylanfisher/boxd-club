@@ -1,6 +1,6 @@
-<%# The body of the message only — emails/layout.html.erb wraps it, and the
-    unsubscribe link lives in that footer. Colours are inline as well as in the
-    layout's stylesheet, for the clients that drop a <style> block. %>
+<%# The body of the message only — emails/layout.html.erb wraps it. Colours are
+    inline as well as in the layout's stylesheet, for the clients that drop a
+    <style> block. %>
 <p class="first" style="color:#d8e0e8">You've been invited to <strong><%= club ? club.name : "Boxd Club" %></strong>.</p>
 <p style="color:#d8e0e8">We read everyone's public Letterboxd watchlist, put the films the most of us already want to see on a ballot, and you rank them. There's no deadline — the round closes when everyone has voted. Then you watch the winner and log it on Letterboxd, and the next round opens once everyone has.</p>
 <%= Mailer.button(verify_url, "Set yourself up") %>

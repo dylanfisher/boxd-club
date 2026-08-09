@@ -34,9 +34,15 @@ module Invites
 
   # The /login form. Returns nil for an unknown address — the caller says the
   # same thing either way, so this can't be used to test who's a member.
+  #
+  # An unsubscribed member still gets one. Unsubscribing means we stop mailing
+  # them club news, not that they lose the account: this is the only door in,
+  # /login deliberately says the same thing either way, so refusing here is
+  # silence with no explanation and no way back. They can turn club mail on
+  # again from /settings once they're through it.
   def send_login(email)
     user = User.first(email: normalize(email))
-    return nil if user.nil? || user.unsubscribed_at
+    return nil if user.nil?
 
     deliver_login(user)
   end
