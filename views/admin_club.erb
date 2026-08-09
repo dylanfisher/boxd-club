@@ -50,10 +50,24 @@
           <%= m.email %>
           <br><span class="meta">
             <%= m.letterboxd_username || "no Letterboxd account" %> ·
-            <%= m.watchlist_size %> films ·
+            <%= m.watchlist_size %> films
+            <%# Empty and never-fetched look identical in a bare count, and
+                they need different fixes — one is a private watchlist, the
+                other is a member the nightly job hasn't reached yet. %>
+            <% if m.linked? %>
+              <% fetched = m.watchlist_fetched_at %>
+              · <%= fetched ? "read #{Fmt.ago(fetched)}" : "never read" %>
+            <% end %> ·
             <% if m.unsubscribed_at %>unsubscribed<% elsif m.verified_at %>active<% else %>invited, not signed in yet<% end %>
           </span>
         </span>
+        <% if m.linked? %>
+          <form method="post" action="/admin/clubs/<%= club.slug %>/refetch">
+            <%== csrf_tag("/admin/clubs/#{club.slug}/refetch") %>
+            <input type="hidden" name="user_id" value="<%= m.id %>">
+            <button class="secondary" type="submit">Re-read watchlist</button>
+          </form>
+        <% end %>
         <form method="post" action="/admin/clubs/<%= club.slug %>/remove">
           <%== csrf_tag("/admin/clubs/#{club.slug}/remove") %>
           <input type="hidden" name="user_id" value="<%= m.id %>">

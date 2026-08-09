@@ -238,9 +238,15 @@ class App < Roda
       )
       Tokens.consume(raw, "verify")
       sign_in(user)
-      # Their picture is decoration on a page they haven't seen yet — fetch it
-      # off the response path, and never let it fail the signup.
-      Rounds.in_background { Avatars.refresh!(user, force: true) }
+      # Both off the response path, and neither allowed to fail the signup.
+      # The picture is decoration on a page they haven't seen yet; the
+      # watchlist is what makes them count towards a ballot, and waiting for
+      # the nightly fetch would mean a club whose members have all joined
+      # still can't open its first round.
+      Rounds.in_background do
+        Avatars.refresh!(user, force: true)
+        Letterboxd.refresh_user!(user)
+      end
       view("welcome", locals: { user: user, clubs: user.clubs_dataset.order(:name).all })
     end
 
@@ -455,6 +461,30 @@ class App < Roda
           user = User[r.params["user_id"].to_i]
           Clubs.remove_member!(club, user) if user
           flash["notice"] = "Removed #{user&.email}."
+          r.redirect "/admin/clubs/#{club.slug}"
+        end
+
+        # Re-read one member's watchlist now, rather than waiting for the
+        # nightly fetch to call it stale. Signup already does this, so this is
+        # for the cases signup can't fix: a watchlist that was private or empty
+        # then and isn't now, or one that changed the day a ballot is due.
+        #
+        # Goes onto a thread whole. Nothing is committed before the response —
+        # a long watchlist is a request per 28 films, and a Letterboxd that
+        # hangs rather than refuses makes that minutes — so the flash promises
+        # a reload rather than claiming it's done.
+        r.post "refetch" do
+          check_csrf!
+          user = club.members.find { |m| m.id == r.params["user_id"].to_i }
+
+          if user.nil?
+            flash["error"] = "Not a member of this club."
+          elsif !user.linked?
+            flash["error"] = "#{user.email} has no Letterboxd account to read."
+          else
+            Rounds.in_background { Letterboxd.refresh_user!(user) }
+            flash["notice"] = "Reading #{user.letterboxd_username}'s watchlist — reload in a minute."
+          end
           r.redirect "/admin/clubs/#{club.slug}"
         end
 
