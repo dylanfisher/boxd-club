@@ -480,4 +480,6 @@ Migrations run by hand — `dokku run boxd-club bundle exec rake db:migrate` —
 a bad migration can't wedge future deploys. A *brand-new* empty database
 bootstraps itself on first boot, so the first deploy doesn't crashloop.
 
+Restart dokku after migrations `dokku ps:restart boxd-club`
+
 `/up` is the health check: it touches the database and returns plain text.
