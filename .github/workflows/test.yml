@@ -1,0 +1,19 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          # Matches the Dockerfile's ruby:4.0.6-slim as closely as the action
+          # allows; .ruby-version pins the rest.
+          ruby-version-file: .ruby-version
+          bundler-cache: true
+      - run: bundle exec rake test

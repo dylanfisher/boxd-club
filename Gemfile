@@ -17,3 +17,10 @@ gem "csv"
 gem "erubi"
 gem "tilt"
 gem "rake"
+
+# Minitest rather than a DSL, and rack-test to drive the routes: the suite runs
+# against the real app, the real templates and a real (temporary) SQLite file.
+group :test do
+  gem "minitest"
+  gem "rack-test"
+end

@@ -340,3 +340,11 @@ task :seed_fixtures do
   puts "scraping #{Seeds::PEOPLE.size} watchlists — this takes a minute"
   Seeds.refresh!
 end
+
+desc "Run the tests"
+task :test do
+  # A subprocess, so the suite gets its own environment: test/helper.rb sets
+  # DATABASE_URL and friends before config/boot.rb connects, and this file has
+  # already connected to the development database by the time it's loaded.
+  sh "ruby", "test/all.rb"
+end

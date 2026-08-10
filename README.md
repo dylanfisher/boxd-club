@@ -231,6 +231,41 @@ unsubscribe footer don't show one.
 | `seed_fixtures` | Re-scrape the demo watchlists and rewrite `db/seeds/watchlists/*.csv` |
 | `demo_vote[slug]` | Vote as everyone but you; `[slug,all]` votes it through |
 | `demo_next[slug]` | Close the current round without waiting on Letterboxd logs |
+| `test` | The suite |
+
+## Tests
+
+`rake test` — Minitest and rack-test, about a second for the lot.
+
+The suite runs against a real SQLite file in a temp directory, built by the
+same migrations a fresh deploy runs, and drives the real routes and the real
+templates. Two things are switched out and nothing else: mail goes to
+`Mail::TestMailer` instead of a transport, and `Net::HTTP.start` raises — a
+test that forgets to stub a scrape fails loudly rather than quietly reaching
+letterboxd.com. `Rounds.in_background` runs inline, so no thread outlives the
+test that started it.
+
+What's covered, roughly in order of what it would cost to get wrong:
+
+- **`matcher_test.rb`** — which films reach a ballot: the four modes, and the
+  two rules on top of them (a film the club settled on never returns; a film
+  merely offered waits until the pool runs dry, then comes back oldest-first).
+- **`rounds_test.rb`** — the lifecycle, `open` → `decided` → `watched | skipped`,
+  including the skip thresholds, the nudge interval, and what happens when
+  Letterboxd is unreachable mid-round.
+- **`concurrency_test.rb`** — a club has one open round, and a round ends once,
+  under real threads. Starting threads together isn't enough to make them
+  collide, so each test holds them at a barrier just before the critical
+  section and lets them go at once.
+- **`votes_test.rb`** — the Borda count, and everything a hand-made POST can't
+  do to a ballot.
+- **`routes_test.rb`** — who may see what, CSRF, the open-redirect refusal, the
+  avatar path, one-click unsubscribe.
+- **`tokens_test.rb`, `throttle_test.rb`, `seen_test.rb`, `avatars_test.rb`,
+  `clubs_test.rb`, `letterboxd_test.rb`, `mailer_test.rb`, `invites_test.rb`,
+  `fmt_test.rb`** — one file per `lib/` file it defends.
+- **`emails_test.rb`** — every template rendered from the `/dev/emails`
+  fixtures, both parts, every link absolute.
 
 ## How the pieces fit
 

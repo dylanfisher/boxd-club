@@ -1,0 +1,41 @@
+<!doctype html>
+<!--
+  A film page, cut down to what Letterboxd.film_details reads: the ld+json
+  block (wrapped in CDATA comments, as Letterboxd serves it), the TMDB link,
+  the backdrop element and the director links.
+-->
+<html lang="en">
+  <head>
+    <title>Stalker (1979)</title>
+    <script type="application/ld+json">
+      /* <![CDATA[ */
+      {
+        "@type": "Movie",
+        "name": "Stalker",
+        "image": "https://a.ltrbxd.com/resized/film-poster/5/1/9/8/7/stalker-0-1000-0-1500-crop.jpg",
+        "director": [
+          { "@type": "Person", "name": "Andrei Tarkovsky" }
+        ],
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": 4.42,
+          "ratingCount": 245123
+        }
+      }
+      /* ]]> */
+    </script>
+  </head>
+  <body>
+    <div id="backdrop"
+         data-backdrop="https://a.ltrbxd.com/resized/sm/upload/backdrop-1200.jpg"
+         data-backdrop2x="https://a.ltrbxd.com/resized/sm/upload/backdrop-1920.jpg"></div>
+
+    <p class="text-link">
+      <a href="/director/andrei-tarkovsky/">Andrei Tarkovsky</a>
+    </p>
+
+    <p class="text-link">
+      <a href="https://www.themoviedb.org/movie/1398/">TMDB</a>
+    </p>
+  </body>
+</html>

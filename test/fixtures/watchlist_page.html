@@ -1,0 +1,48 @@
+<!doctype html>
+<!--
+  A watchlist listing page, cut down to the parts lib/letterboxd.rb reads: the
+  LazyPoster components and the avatar in the header. The markup is as
+  documented at the top of lib/letterboxd.rb (verified there 2026-08-08).
+
+  Deliberately awkward in four ways, because real pages are:
+    - the slug's year and the display year disagree on Operation Mincemeat
+    - one entry carries data-item-name rather than a full display name
+    - one entry has a slug and no name at all
+    - one poster div isn't a film at all and has no slug
+-->
+<html lang="en">
+  <head><title>Watchlist</title></head>
+  <body>
+    <header>
+      <a href="/someone/" class="avatar">
+        <img src="https://a.ltrbxd.com/resized/avatar/upload/1/2/3/4/avtr-0-48-0-48-crop.jpg?v=abc123" width="48" height="48" alt="someone">
+      </a>
+    </header>
+
+    <ul class="poster-list">
+      <li class="poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="operation-mincemeat-2022"
+             data-item-full-display-name="Operation Mincemeat (2021)"></div>
+      </li>
+      <li class="poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="citizen-kane"
+             data-item-full-display-name="Citizen Kane (1941)"></div>
+      </li>
+      <li class="poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="stalker"
+             data-item-name="Stalker"></div>
+      </li>
+      <li class="poster-container">
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="a-film-with-no-name"
+             data-item-full-display-name="  "></div>
+      </li>
+      <li class="poster-container">
+        <div class="react-component" data-component-class="LazyPoster"></div>
+      </li>
+    </ul>
+  </body>
+</html>
