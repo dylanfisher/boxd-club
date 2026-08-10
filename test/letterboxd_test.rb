@@ -37,6 +37,35 @@ class LetterboxdTest < BoxdTest
     assert_equal 3, slugs.size
   end
 
+  # -- the RSS feed ----------------------------------------------------------
+
+def test_recent_logs_reads_the_feed_newest_first
+  entries = stub_letterboxd("/rss/" => fixture("rss_feed.xml")) do
+    Letterboxd.recent_logs("dylan_fisher")
+  end
+
+  assert_equal %w[heavy-metal vertigo new-rose-hotel], entries.map { |e| e[:slug] }
+  assert_equal ["Heavy Metal", 1981], entries.first.values_at(:title, :year),
+               "the letterboxd: namespace carries the title and year apart"
+end
+
+# Follows, likes and list activity share the feed and carry no film link.
+def test_recent_logs_drops_entries_that_are_not_films
+  feed = <<~XML
+    <rss version="2.0"><channel>
+      <link>https://letterboxd.com/someone/</link>
+      <item><link>https://letterboxd.com/someone/list/best-of-2026/</link></item>
+      <item><link>https://letterboxd.com/someone/film/stalker/</link></item>
+    </channel></rss>
+  XML
+
+  entries = stub_letterboxd("/rss/" => feed) { Letterboxd.recent_logs("someone") }
+
+  assert_equal ["stalker"], entries.map { |e| e[:slug] },
+               "the channel link and the list entry are not films"
+  assert_equal "stalker", entries.first[:title], "no film title in the item, so the slug stands in"
+end
+
   def test_parse_display_name
     assert_equal ["Citizen Kane", 1941], Letterboxd.parse_display_name("Citizen Kane (1941)")
     assert_equal ["Se7en", nil], Letterboxd.parse_display_name("Se7en")
@@ -99,28 +128,6 @@ class LetterboxdTest < BoxdTest
 
     stub_http(http_response(Net::HTTPOK, "200", body)) do
       assert_equal Letterboxd::MAX_BODY_BYTES, Letterboxd.get("#{Letterboxd::BASE}/x/").bytesize
-    end
-  end
-
-  # -- has this member watched it? -------------------------------------------
-
-  def test_a_member_who_has_logged_a_film_answers_200
-    stub_http(http_response(Net::HTTPOK, "200", "<html></html>")) do
-      assert Letterboxd.logged?("someone", "stalker")
-    end
-  end
-
-  def test_a_film_merely_on_their_watchlist_answers_404
-    stub_http(http_response(Net::HTTPNotFound, "404")) do
-      refute Letterboxd.logged?("someone", "stalker")
-    end
-  end
-
-  # A rate limit must not be read as "they haven't watched it" — that would
-  # hold a round open forever, or worse, close one nobody has finished.
-  def test_a_rate_limit_is_not_mistaken_for_an_unwatched_film
-    stub_http(http_response(Net::HTTPForbidden, "403")) do
-      assert_raises(Letterboxd::RateLimited) { Letterboxd.logged?("someone", "stalker") }
     end
   end
 
@@ -212,6 +219,31 @@ class LetterboxdTest < BoxdTest
           "Stalker,1979,https://letterboxd.com/film/stalker/\n"
 
     assert_equal 1, Letterboxd.from_csv(csv).size
+  end
+
+  # The nightly fetch's whole seen path for a member: one request to their feed,
+  # straight into the cache, films created for anything we hadn't heard of.
+  def test_the_nightly_fetch_reads_the_feed_into_the_seen_cache
+    member = user(username: "dylan_fisher")
+
+    count = stub_letterboxd("/rss/" => fixture("rss_feed.xml")) do
+      Letterboxd.refresh_watched!(member)
+    end
+
+    assert_equal 3, count
+    assert_equal 3, Seen.user_count(member.id)
+    assert_equal %w[heavy-metal new-rose-hotel vertigo],
+                 Film.where(id: DB[:seen_checks].where(user_id: member.id).select(:film_id))
+                     .select_map(:slug).sort
+    assert_equal 1981, Film.first(slug: "heavy-metal").year
+  end
+
+  # A member who has logged nothing has no feed at all. That's not a reason to
+  # take the rest of the night's work down.
+  def test_a_member_with_no_feed_does_not_stop_the_fetch
+    member = user(username: "nobody")
+
+    assert_nil stub_letterboxd({}) { Letterboxd.refresh_watched!(member) }
   end
 
   # -- uploading a watch history ---------------------------------------------
@@ -332,6 +364,102 @@ class LetterboxdTest < BoxdTest
     Letterboxd.store!(member, [{ slug: "stalker", title: "Stalker", year: 1979 }])
 
     assert_equal "Stalker", Film.first(slug: "stalker").title
+  end
+
+  # The bug this was all for: watched.csv carries a boxd.it short link rather
+  # than a film path, so the importer invents a slug from the title, and keying
+  # films on slug alone gave that film a second row. The seen_checks row landed
+  # on it and the club's list entry stayed on the first, so the ballot went on
+  # offering a film the member had told us they'd watched.
+  def test_an_import_with_no_film_path_finds_the_film_we_already_have
+    member = user
+    scraped = Film.create(slug: "inception", title: "Inception", year: 2010, created_at: Time.now)
+    csv = "Name,Year,Letterboxd URI\nInception,2010,https://boxd.it/1XYZ\n"
+
+    Letterboxd.import_watched!(member, StringIO.new(csv), filename: "watched.csv")
+
+    assert_equal 1, Film.where(title: "Inception").count, "no second row for the same film"
+    assert_equal [scraped.id], DB[:seen_checks].where(user_id: member.id).select_map(:film_id)
+  end
+
+  # The same collision the other way round: the import came first, so the row
+  # carries the slug we made up, and the scrape has to land on it.
+  def test_a_scrape_finds_the_row_an_import_invented_and_gives_it_the_real_slug
+    member = user
+    csv = "Name,Year,Letterboxd URI\nInception,2010,https://boxd.it/1XYZ\n"
+    Letterboxd.import_watched!(member, StringIO.new(csv), filename: "watched.csv")
+    invented = Film.first(title: "Inception")
+
+    assert_equal "inception-2010", invented.slug, "nothing in the export said otherwise"
+
+    Letterboxd.store_list!(club(mode: "list"), [{ slug: "inception", title: "Inception", year: 2010 }])
+
+    assert_equal 1, Film.where(title: "Inception").count
+    assert_equal "inception", invented.refresh.slug, "the real slug wins"
+    assert_nil invented.details_fetched_at, "anything fetched under the invented slug was a 404"
+  end
+
+  # Letterboxd gives a short and a feature of the same name and year different
+  # slugs. Matching on title and year alone would make them one film.
+  def test_two_real_slugs_sharing_a_title_and_year_stay_two_films
+    Letterboxd.store_list!(club(mode: "list"), [
+                             { slug: "the-batman", title: "The Batman", year: 2022 },
+                             { slug: "the-batman-1", title: "The Batman", year: 2022 }
+                           ])
+
+    assert_equal 2, Film.where(title: "The Batman").count
+  end
+
+  # And they still do with an invented row in the way. Both key to it, so
+  # whichever slug asks second has to be told no and given a row of its own —
+  # otherwise the pair collapses and the list loses one of them for good.
+  def test_a_short_and_a_feature_dont_both_adopt_one_invented_row
+    member = user
+    csv = "Name,Year,Letterboxd URI\nThe Batman,2022,https://boxd.it/1XYZ\n"
+    Letterboxd.import_watched!(member, StringIO.new(csv), filename: "watched.csv")
+
+    club = club(mode: "list")
+    Letterboxd.store_list!(club, [
+                             { slug: "the-batman", title: "The Batman", year: 2022 },
+                             { slug: "the-batman-1", title: "The Batman", year: 2022 }
+                           ])
+
+    assert_equal %w[the-batman the-batman-1], Film.where(title: "The Batman").order(:slug).select_map(:slug)
+    assert_equal 2, DB[:club_list_entries].where(club_id: club.id).count
+  end
+
+  # Two entries under one slug are one film whatever their titles say. Resolving
+  # them apart put the second in with the films to create and inserted a row for
+  # a slug the first was about to adopt — a UNIQUE violation out of an upload.
+  def test_one_slug_under_two_titles_is_one_film
+    member = user
+    csv = "Name,Year,Letterboxd URI\nBrazil,1985,https://boxd.it/1XYZ\n"
+    Letterboxd.import_watched!(member, StringIO.new(csv), filename: "watched.csv")
+
+    Letterboxd.store_list!(club(mode: "list"), [
+                             { slug: "brazil", title: "Brazil", year: 1985 },
+                             { slug: "brazil", title: "Brazil: Director's Cut", year: 1985 }
+                           ])
+
+    assert_equal ["brazil"], Film.where(year: 1985).select_map(:slug)
+  end
+
+  def test_films_with_no_year_are_never_matched_on_title_alone
+    Letterboxd.store_list!(club(mode: "list"), [
+                             { slug: "hamlet-a", title: "Hamlet", year: nil },
+                             { slug: "hamlet-b", title: "Hamlet", year: nil }
+                           ])
+
+    assert_equal 2, Film.where(title: "Hamlet").count
+    assert_equal [nil, nil], Film.where(title: "Hamlet").select_map(:match_key)
+  end
+
+  def test_a_corrected_title_moves_the_match_key_with_it
+    member = user
+    Letterboxd.store!(member, [{ slug: "stalker", title: "Stalkr", year: 1979 }])
+    Letterboxd.store!(member, [{ slug: "stalker", title: "Stalker", year: 1979 }])
+
+    assert_equal "stalker-1979", Film.first(slug: "stalker").match_key
   end
 
   def test_a_clubs_list_keeps_the_order_it_was_published_in

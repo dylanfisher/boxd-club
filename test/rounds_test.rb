@@ -179,7 +179,45 @@ class RoundsTest < BoxdTest
   def test_letterboxd_falling_over_leaves_the_round_where_it_was
     round = decided_round
 
-    stub_method(Letterboxd, :logged?, ->(*) { raise Letterboxd::RateLimited, "challenge" }) do
+    stub_method(Letterboxd, :recent_logs, ->(*) { raise Letterboxd::RateLimited, "challenge" }) do
+      Rounds.check_logs!(round)
+    end
+
+    assert_equal "decided", round.refresh.state
+  end
+
+  # The one route we ask, and the reason it's the only one: the feed is ordered
+  # by when things were logged, so it answers for a film of any age.
+  def test_the_feed_closes_a_round_everyone_has_logged
+    round = decided_round
+    film = Film[round.winning_film_id]
+    logs = { @a.letterboxd_username => [film.slug], @b.letterboxd_username => [film.slug] }
+
+    stub_recent_logs(logs) do
+      Rounds.check_logs!(round)
+    end
+
+    assert_equal "watched", round.refresh.state
+  end
+
+  # A feed with other films in it is an answer about this one: they haven't
+  # watched it, and the round stays open.
+  def test_a_feed_without_the_film_holds_the_round_open
+    round = decided_round
+
+    stub_recent_logs(@club.linked_members.to_h { |u| [u.letterboxd_username, ["something-else"]] }) do
+      Rounds.check_logs!(round)
+    end
+
+    assert_equal "decided", round.refresh.state
+  end
+
+  # An account with nothing logged at all has no feed — a 404, which means they
+  # haven't watched it rather than that anything is broken.
+  def test_a_member_with_no_feed_has_not_watched_it
+    round = decided_round
+
+    stub_method(Letterboxd, :recent_logs, ->(*) { raise Letterboxd::NotFound, "no feed" }) do
       Rounds.check_logs!(round)
     end
 
@@ -257,6 +295,60 @@ class RoundsTest < BoxdTest
     assert_equal 0, DB[:skip_votes].where(round_id: round.id).count
   end
 
+  # -- marking it watched by hand ---------------------------------------------
+
+  # The escape hatch for what the feed can't show us: a film ticked watched
+  # without a diary entry, or one that fell off the end of a busy week.
+  def test_marking_it_watched_records_the_member_and_says_they_said_so
+    round = decided_round
+    Rounds.log_watch!(round, @a)
+
+    assert_equal [@a.id], round.logged_user_ids
+    assert_equal [@b], round.pending_loggers
+    assert_equal true, round.watch_log(@a)[:manual]
+    assert_equal "decided", round.refresh.state, "the club is still waiting on @b"
+  end
+
+  def test_the_last_member_marking_it_watched_closes_the_round
+    round = decided_round
+    Rounds.log_watch!(round, @a)
+    Rounds.log_watch!(round, @b)
+
+    assert_equal "watched", round.refresh.state
+    refute_nil round.watched_at
+    assert_equal "open", @club.open_round&.state
+  end
+
+  # It says what Letterboxd said, not what the member did — a detected log is
+  # already the stronger claim and marking it again shouldn't rewrite it.
+  def test_marking_it_watched_leaves_a_detected_log_alone
+    round = decided_round
+    DB[:watch_logs].insert(round_id: round.id, user_id: @a.id, detected_at: Time.now)
+
+    Rounds.log_watch!(round, @a)
+
+    assert_equal false, round.watch_log(@a)[:manual]
+  end
+
+  # A member with no Letterboxd account was never part of what the round waits
+  # for, so there is nothing here for them to unblock — and recording it would
+  # let one person end a round on their own.
+  def test_a_member_without_letterboxd_cannot_mark_it_watched
+    solo = user(username: nil)
+    @club.add_user(solo)
+    round = decided_round
+
+    assert_nil Rounds.log_watch!(round, solo)
+    assert_empty DB[:watch_logs].where(round_id: round.id, user_id: solo.id).all
+  end
+
+  def test_an_open_round_cannot_be_marked_watched
+    round = Rounds.open!(@club)
+
+    assert_nil Rounds.log_watch!(round, @a)
+    assert_equal 0, DB[:watch_logs].where(round_id: round.id).count
+  end
+
   # -- nudging ---------------------------------------------------------------
 
   def test_a_nudge_goes_only_to_whoever_still_owes_a_ballot
@@ -309,10 +401,23 @@ class RoundsTest < BoxdTest
 
   # -- advance! --------------------------------------------------------------
 
-  def test_advance_opens_a_first_round_tallies_a_full_one_and_leaves_the_rest
+  def test_advance_never_starts_a_club_that_has_never_played
     Rounds.advance!(@club)
-    round = @club.open_round
-    refute_nil round
+
+    assert_nil @club.current_round, "the first round waits on an admin"
+  end
+
+  def test_advance_opens_the_next_round_once_a_club_has_history
+    first = Rounds.open!(@club)
+    Rounds.claim!(first, from: "open", to: "watched", watched_at: Time.now)
+
+    Rounds.advance!(@club)
+
+    refute_nil @club.open_round
+  end
+
+  def test_advance_tallies_a_full_round_and_leaves_the_rest
+    round = Rounds.open!(@club)
 
     Rounds.advance!(@club)
     assert_equal "open", round.refresh.state, "still waiting on ballots"
@@ -323,6 +428,38 @@ class RoundsTest < BoxdTest
     Rounds.advance!(@club)
 
     assert_equal "decided", round.refresh.state
+  end
+
+  # -- reset -----------------------------------------------------------------
+
+  def test_reset_deletes_every_round_and_what_hung_off_it
+    round = Rounds.open!(@club)
+    Votes.record_ranking!(round, @a, rank(round, *round.candidates))
+
+    assert_equal 1, Rounds.reset!(@club)
+
+    assert_nil @club.current_round
+    assert_empty Round.where(club_id: @club.id).all
+    assert_empty Candidate.where(round_id: round.id).all
+    assert_empty DB[:votes].where(round_id: round.id).all
+  end
+
+  def test_a_reset_club_is_back_to_never_having_played_and_waits_for_an_admin
+    Rounds.open!(@club)
+    Rounds.reset!(@club)
+
+    assert @club.never_started?
+    Rounds.advance!(@club)
+    assert_nil @club.current_round, "the scheduler leaves a reset club alone"
+
+    assert_equal 1, Rounds.open!(@club).number, "numbering starts over"
+  end
+
+  def test_reset_keeps_the_members
+    Rounds.open!(@club)
+    Rounds.reset!(@club)
+
+    assert_equal 2, @club.voting_members.size
   end
 
   # -- staleness -------------------------------------------------------------

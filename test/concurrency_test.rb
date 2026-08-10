@@ -104,7 +104,7 @@ class ConcurrencyTest < BoxdTest
 
     opens = counting_opens do
       with_barrier_on(Round, :pending_loggers, barrier) do
-        stub_method(Letterboxd, :logged?, ->(username, _slug) { logged.include?(username) }) do
+        stub_logged(logged) do
           race { Rounds.check_logs!(round) }
         end
       end

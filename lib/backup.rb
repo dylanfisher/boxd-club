@@ -8,7 +8,13 @@ require_relative "models"
 module Backup
   module_function
 
-  def dir = File.join(APP_ROOT, "db", "backups")
+  # Beside the database, whatever DATABASE_URL says — *not* a fixed app-relative
+  # path. In production the volume is mounted at /app/data, so writing to
+  # APP_ROOT/db would put every snapshot inside the container's own filesystem,
+  # where the next deploy throws it away. Locally the two are the same directory.
+  # nil for a database that isn't a file, the same as db_path — there is nowhere
+  # to put snapshots of one, and the caller already has that case to handle.
+  def dir(path = db_path) = path && File.join(File.dirname(path), "backups")
 
   # `label:` writes to boxd-<label>.db instead of the day-of-week slot, so the
   # pre-migration snapshot doesn't spend one of the seven nightly ones.
@@ -16,8 +22,9 @@ module Backup
     path = db_path
     return warn("[backup] not a file-backed database, skipping") if path.nil?
 
-    Dir.mkdir(dir) unless Dir.exist?(dir)
-    target = File.join(dir, "boxd-#{label || Time.now.strftime('%a').downcase}.db")
+    target_dir = dir(path)
+    Dir.mkdir(target_dir) unless Dir.exist?(target_dir)
+    target = File.join(target_dir, "boxd-#{label || Time.now.strftime('%a').downcase}.db")
 
     # VACUUM INTO refuses to overwrite, so clear last week's file first.
     File.unlink(target) if File.exist?(target)

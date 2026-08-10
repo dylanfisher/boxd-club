@@ -219,9 +219,21 @@ class BoxdTest < Minitest::Test
     stub_method(Letterboxd, :get, responder) { yield }
   end
 
-  # Whether each member has logged a film, from a list of usernames.
+  # Whether each member has logged the film they're about to be asked about,
+  # from a list of usernames: everyone named has a feed carrying every film in
+  # the database, everyone else has an empty one. For tests that care who has
+  # watched what rather than which slug came back.
   def stub_logged(usernames, &)
-    stub_method(Letterboxd, :logged?, ->(username, _slug) { usernames.include?(username) }, &)
+    stub_recent_logs(usernames.to_h { |u| [u, Film.select_map(:slug)] }, &)
+  end
+
+  # The RSS feed, as slugs per username. Anyone not named has logged nothing.
+  # Titles don't matter to lib/rounds.rb and every film here already has a row,
+  # so the slug stands in for one.
+  def stub_recent_logs(by_username, &)
+    stub_method(Letterboxd, :recent_logs, lambda { |username|
+      by_username.fetch(username, []).map { |slug| { slug: slug, title: slug, year: nil } }
+    }, &)
   end
 
   def fixture(name) = File.read(File.join(__dir__, "fixtures", name))

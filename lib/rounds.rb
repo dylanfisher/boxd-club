@@ -102,6 +102,12 @@ module Rounds
   def advance!(club, pace: :interactive)
     round = club.current_round
 
+    # A club's first round is never started by the scheduler. Members are
+    # invited before they've all linked a watchlist, and a ballot that goes out
+    # the moment two of them have joined is a round the club didn't choose to
+    # play. An admin presses "Open a round now" when the club is ready; from
+    # then on rounds follow each other on their own.
+    return nil if round.nil? && club.never_started?
     return open!(club) if round.nil?
 
     case round.state
@@ -174,9 +180,9 @@ module Rounds
     end
   end
 
-  # Asks Letterboxd who has logged the winner yet. One request per member who
-  # hasn't been seen logging it, so this shrinks as people watch it — and once
-  # somebody is recorded we never ask about them again.
+  # Asks Letterboxd who has logged the winner yet. One or two requests per
+  # member who hasn't been seen logging it, so this shrinks as people watch it —
+  # and once somebody is recorded we never ask about them again.
   def check_logs!(round, pace: :interactive, deliver: :now)
     film = Film[round.winning_film_id]
     return nil if film.nil?
@@ -195,7 +201,7 @@ module Rounds
     # in the same second in the same member order every four hours.
     pending.shuffle.each_with_index do |user, i|
       Letterboxd.pause(Letterboxd::PACE.fetch(pace)) if i.positive?
-      next unless Letterboxd.logged?(user.letterboxd_username, film.slug)
+      next unless watched?(user, film)
 
       DB[:watch_logs].insert_conflict.insert(
         round_id: round.id, user_id: user.id, detected_at: Time.now
@@ -208,6 +214,25 @@ module Rounds
     return nil unless round.pending_loggers.empty?
 
     mark_watched!(round, deliver: deliver)
+  end
+
+  # Has this member logged the film? One request, to the RSS feed.
+  #
+  # The feed is the only route Letterboxd leaves open that is ordered by when
+  # things were logged rather than by release date, so it answers whatever the
+  # film's age — which is the whole point for a club working through a list of
+  # classics. It carries about 50 entries, weeks of logging for most people and
+  # comfortably longer than the round we're asking about.
+  #
+  # A member with nothing logged at all has no feed, which is a 404: they
+  # haven't watched it. Anything else Letterboxd does wrong is left to the
+  # caller, which logs it and moves on to the next member — so a challenge
+  # costs the rest of the club's requests too, and the round waits for the
+  # next run either way.
+  def watched?(user, film)
+    Letterboxd.recent_logs(user.letterboxd_username).any? { |e| e[:slug] == film.slug }
+  rescue Letterboxd::NotFound
+    false
   end
 
   # Claims a state change, for the transitions that end a round and open the
@@ -248,6 +273,28 @@ module Rounds
     check_skips!(round, deliver: deliver)
   end
 
+  # A member saying they've watched it, for the times Letterboxd doesn't say so
+  # for them. See db/migrate/011 for when that happens.
+  #
+  # Only for someone the round is actually waiting on. Everybody else is either
+  # recorded already or has no Letterboxd account, and a member without one has
+  # never been part of what a round waits for — letting them close one here
+  # would hand a single person the end of the round, which is the thing
+  # skip_vote!'s threshold exists to prevent.
+  def log_watch!(round, user, deliver: :now)
+    return nil unless round&.decided? && round.pending_loggers.any? { |u| u.id == user.id }
+
+    # insert_conflict, not upsert: a detected log already says everything this
+    # one would, and it shouldn't be rewritten into a claim.
+    DB[:watch_logs].insert_conflict.insert(
+      round_id: round.id, user_id: user.id, detected_at: Time.now, manual: true
+    )
+    puts "[round] #{round.id}: #{user.display_name} marked #{Film[round.winning_film_id]&.title} watched"
+    return nil unless round.pending_loggers.empty?
+
+    mark_watched!(round, deliver: deliver)
+  end
+
   def check_skips!(round, deliver: :now)
     return nil unless round&.decided?
 
@@ -266,6 +313,31 @@ module Rounds
     puts "[round] #{round.id} skipped by vote — opening the next one"
     open!(round.club, deliver: deliver)
     round
+  end
+
+  # Puts a club back to the day it was created: no ballot out, no history, and
+  # `never_started?` true again — so the scheduler leaves it alone until an
+  # admin opens the first round by hand.
+  #
+  # For the club that started before it was ready. Two of the six members had
+  # signed up, so a ballot went out to those two; the rest are still arriving.
+  # There's no way to un-send those emails, but there is a way to make the
+  # round they point at stop existing, and to stop the club counting a film
+  # nobody chose as watched.
+  #
+  # Members, invites and cached watchlists all stay — the only thing undone is
+  # the playing. Candidates, votes, watch logs and skip votes go with the
+  # rounds they belong to, on the foreign keys.
+  #
+  # Returns how many rounds it deleted.
+  def reset!(club)
+    count = nil
+    DB.transaction do
+      count = club.rounds_dataset.count
+      club.rounds_dataset.delete
+    end
+    puts "[round] club #{club.slug}: reset — #{count} round#{count == 1 ? '' : 's'} deleted"
+    count
   end
 
   # The automatic chase only. A club with auto_nudge off is never mailed by the
@@ -324,8 +396,7 @@ module Rounds
     if club.list_mode == "list"
       user_ids = members.select(&:linked?).map(&:id)
       list_size = DB[:club_list_entries].where(club_id: club.id).count
-      puts "\nlist: #{list_size} films, #{Seen.watched_on_list_count(club, user_ids)} already watched by somebody, " \
-           "#{Seen.verified_unseen_count(club, user_ids)} verified unseen"
+      puts "\nlist: #{list_size} films, #{Seen.watched_on_list_count(club, user_ids)} already watched by somebody"
     end
 
     picks = Matcher.candidates_for(club)

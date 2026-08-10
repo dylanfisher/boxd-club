@@ -388,6 +388,25 @@ class App < Roda
                           end
         r.redirect club.path
       end
+
+      # "I've watched it" — the manual version of what reading everyone's
+      # Letterboxd feed does on its own. POST for the reason the two above are.
+      r.post "watched" do
+        check_csrf!
+        round = club.current_round
+        next error_page("There's nothing to mark watched right now.") unless round&.decided?
+
+        # Same as the deciding skip vote: whoever is last shouldn't wait on a
+        # round's worth of ballot emails.
+        Rounds.log_watch!(round, current_user, deliver: :later)
+        round.refresh
+        flash["notice"] = if round.watched?
+                            "That's everyone — a new round is open."
+                          else
+                            "Marked as watched. Waiting on the rest of the club."
+                          end
+        r.redirect club.path
+      end
     end
 
     # Every email, rendered from fixtures. Development only, and it can't send:
@@ -566,6 +585,22 @@ class App < Roda
           r.redirect "/admin/clubs/#{club.slug}"
         end
 
+        # Deletes every round the club has played. The one admin action that
+        # destroys something people did — so it asks for the slug typed out,
+        # rather than trusting a button nobody meant to press.
+        r.post "reset" do
+          check_csrf!
+
+          if r.params["confirm"].to_s.strip != club.slug
+            flash["error"] = "Type #{club.slug} in the box to reset the club."
+          else
+            n = Rounds.reset!(club)
+            flash["notice"] = "Reset #{club.name} — #{n} #{n == 1 ? 'round' : 'rounds'} deleted. " \
+                              "Open the first round when everyone's signed up."
+          end
+          r.redirect "/admin/clubs/#{club.slug}"
+        end
+
         # Manual overrides for when a club gets stuck: nobody voting, or a
         # winner everyone watched but nobody logged.
         r.post "round", String do |action|
@@ -644,8 +679,13 @@ class App < Roda
 
   def admin_club(club)
     round = club.current_round
+    members = club.members
+    # A list-mode club's ballot is the club's list minus what its members have
+    # seen, so "12 of 500 watched" is the number that explains a thin ballot.
+    # Watchlist mode never touches the list, and its watchlists are the input.
+    on_list = club.list_mode == "list" ? Seen.watched_on_list_counts(club, members.map(&:id)) : {}
     view("admin_club", locals: {
-           club: club, round: round,
+           club: club, round: round, members: members, watched_on_list: on_list,
            candidates: round ? round.candidate_films : [],
            history: club.rounds_dataset.order(Sequel.desc(:opened_at)).limit(20).all
          })

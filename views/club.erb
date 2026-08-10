@@ -97,6 +97,11 @@
         user-select: none; padding: 0 .2rem; font-size: 1.1rem;
         position: relative; z-index: 1;
       }
+      /* Once rows are draggable, a drag that starts on the poster or title
+         would otherwise smear a text selection across the list — and on iOS
+         raise the selection callout. -webkit- prefix for Safari, which is
+         where the ballot is mostly opened. */
+      #ballot.js li { -webkit-user-select: none; user-select: none; }
       #ballot.js .handle { display: inline; }
       #ballot.dragging { cursor: grabbing; }
       #ballot.dragging .handle { cursor: grabbing; }
@@ -112,7 +117,7 @@
       .drag-ghost .handle { display: inline; color: #fff; }
       .drag-ghost {
         position: fixed; z-index: 50; margin: 0; pointer-events: none;
-        list-style: none;
+        list-style: none; -webkit-user-select: none; user-select: none;
         display: flex; align-items: center; gap: var(--space-3);
         background: var(--card); border: 1px solid var(--accent);
         border-radius: .5rem; padding: var(--space-3);
@@ -316,11 +321,37 @@
     <% end %>
   </section>
 
+  <%# Where this member stands, and the manual way in for one Letterboxd hasn't
+      shown us logging it. Only offered to somebody the round is waiting on —
+      see Rounds.log_watch!, which won't record it for anyone else. Nothing at
+      all for an admin looking in on a club they aren't part of. %>
+  <% log = round.watch_log(user) %>
+  <% pending_self = waiting.any? { |m| m.id == user&.id } %>
+  <% if log || pending_self %>
+    <section class="section">
+      <h3>Mark as Watched</h3>
+      <% if log %>
+        <p class="dim">
+          <%= log[:manual] ? "You've marked this one watched." : "Letterboxd shows you've logged it." %>
+        </p>
+      <% else %>
+        <p class="dim">
+          Logging it on Letterboxd is usually picked up here within a few hours.
+          If there's a problem or you already watched it, press this button.
+        </p>
+        <form method="post" action="<%= club.path %>/watched">
+          <%== csrf_tag("#{club.path}/watched") %>
+          <button class="secondary" type="submit">I've watched it</button>
+        </form>
+      <% end %>
+    </section>
+  <% end %>
+
   <%# Can't get hold of it, or gone off it: half the club — at least two of them
       — ends the round and the next ballot goes out. %>
   <% skips = round.skip_voters %>
   <section class="section">
-    <h3>Not this one?</h3>
+    <h3>Skip the Round</h3>
     <p class="dim">
       <%= skips.size %> of <%= round.skips_needed %> needed to skip
       <%= film&.title %> and open the next round.
@@ -344,7 +375,7 @@
 
   <% if standings.any? %>
     <section class="section">
-      <h2>How it went</h2>
+      <h2>Results</h2>
       <ol class="films">
         <% standings.each_with_index do |row, i| %>
           <li>

@@ -28,7 +28,7 @@ module Cache
   # with what each one actually touches. Cadences mirror the cron lines in
   # config/schedule.rb — change them there and here together.
   JOBS = [
-    { name: "daily_fetch", label: "Watchlists, club lists and profile pictures",
+    { name: "daily_fetch", label: "Watchlists, club lists, recent viewing and profile pictures",
       cadence: "daily, around 8am" },
     { name: "advance", label: "Rounds, and who has logged the winner",
       cadence: "every four hours" },
@@ -59,36 +59,28 @@ module Cache
   end
 
   # One row per member: how much of their watch history we hold, and how it got
-  # here. Unlike a watchlist this isn't one read of one page — see lib/seen.rb —
-  # so the row separates the two numbers that matter: films we know they've
-  # watched, and films we've asked about at all. A member with a big second
-  # number and a small first one isn't a failed fetch; it's a list they've
-  # mostly not seen, which is the good case.
+  # here. Every row is a film they've watched (see lib/seen.rb), so unlike a
+  # watchlist there's no total to be a fraction of — the numbers that mean
+  # something are how many we hold and when we last added to them.
   def watch_histories(viewer)
     users = visible_users(viewer)
-    ids = users.map(&:id)
-    asked = seen_stats(ids)
-    watched = seen_stats(ids, seen: true)
+    watched = seen_stats(users.map(&:id))
     rows = users.map do |user|
       { user: user,
         films: watched.dig(user.id, :films) || 0,
-        asked: asked.dig(user.id, :films) || 0,
         imported_at: user.watched_imported_at,
-        fetched_at: asked[user.id] && timestamp(asked[user.id][:fetched_at]) }
+        fetched_at: watched[user.id] && timestamp(watched[user.id][:fetched_at]) }
     end
     by_recency(rows)
   end
 
-  # How many seen_checks rows we hold per member and when the newest was
-  # written, for the whole section in one query. Two calls rather than a
-  # conditional count: SQLite stores the boolean as an integer and Postgres
-  # won't sum one, and a filtered aggregate isn't portable between them.
-  def seen_stats(ids, seen: nil)
+  # How many watched films we hold per member and when the newest was written,
+  # for the whole section in one query.
+  def seen_stats(ids)
     return {} if ids.empty?
 
-    rows = DB[:seen_checks].where(user_id: ids)
-    rows = rows.where(seen: seen) unless seen.nil?
-    rows
+    DB[:seen_checks]
+      .where(user_id: ids, seen: true)
       .group(:user_id)
       .select(:user_id,
               Sequel.function(:count).*.as(:films),
@@ -104,11 +96,11 @@ module Cache
     stats = entry_stats(:club_list_entries, :club_id, clubs.map(&:id))
     members = linked_member_ids(clubs.map(&:id))
     rows = clubs.map do |club|
-      # How much of the list has been checked against everybody and come back
-      # clean. It's the number that explains a thin ballot, so it's here rather
-      # than only in the logs.
-      unseen = Seen.verified_unseen_count(club, members.fetch(club.id, []))
-      stat_row(:club, club, stats[club.id]).merge(unseen: unseen)
+      # How much of the list somebody has already watched, and so how much of it
+      # can never reach a ballot. It's the number that explains a thin one, so
+      # it's here rather than only in the logs.
+      watched = Seen.watched_on_list_count(club, members.fetch(club.id, []))
+      stat_row(:club, club, stats[club.id]).merge(watched: watched)
     end
     by_recency(rows)
   end
@@ -124,7 +116,11 @@ module Cache
       .where(Sequel[:memberships][:club_id] => club_ids)
       .where(Sequel[:users][:active] => true, Sequel[:users][:unsubscribed_at] => nil)
       .exclude(Sequel[:users][:verified_at] => nil)
-      .exclude(Sequel[:users][:letterboxd_username] => [nil, ""])
+      # Two excludes, not one against [nil, ""]: that compiles to
+      # `NOT IN (NULL, '')`, which is unknown for every row and so matched
+      # nobody — this section counted zero watched film whatever we held.
+      .exclude(Sequel[:users][:letterboxd_username] => nil)
+      .exclude(Sequel[:users][:letterboxd_username] => "")
       .select_map([Sequel[:memberships][:club_id], Sequel[:users][:id]])
       .group_by(&:first)
       .transform_values { |rows| rows.map(&:last) }

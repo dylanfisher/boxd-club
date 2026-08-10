@@ -115,8 +115,8 @@ task :refresh do
   Letterboxd.refresh_all!(pace: :interactive, force: true)
 end
 
-desc "Check a list club's films against what its members have watched: rake seen[slug]"
-task :seen, %i[slug budget] do |_t, args|
+desc "Re-read what a list club's members have watched lately, and say what it rules out: rake seen[slug]"
+task :seen, %i[slug] do |_t, args|
   require_relative "lib/letterboxd"
   club = find_club(args[:slug])
   abort "#{club.slug} is in #{club.list_mode} mode — only list clubs need this" unless club.list_mode == "list"
@@ -126,17 +126,19 @@ task :seen, %i[slug budget] do |_t, args|
   list_size = DB[:club_list_entries].where(club_id: club.id).count
   abort "no list cached for #{club.slug} — try: rake refresh" if list_size.zero?
 
+  # One request each, at the interactive pace: you asked for it by hand, so it
+  # doesn't sit through the nightly job's staggers.
+  users.each do |u|
+    Letterboxd.refresh_watched!(u)
+    Letterboxd.pause(Letterboxd::PACE.fetch(:interactive))
+  end
+
   users.each do |u|
     puts format("  %-20s %5d watched films on file", u.letterboxd_username, Seen.user_count(u.id))
   end
   puts "\n#{list_size} films on the list, " \
-       "#{Seen.verified_unseen_count(club, users.map(&:id))} verified unseen"
-
-  # By hand means you want it now: interactive pace, and it doesn't stop at the
-  # reserve the nightly job settles for.
-  budget = (args[:budget] || Letterboxd::SEEN_BUDGET).to_i
-  puts "checking up to #{budget} — one request each, so this takes a minute"
-  Letterboxd.warm_seen!(club, pace: :interactive, force: true, budget: budget)
+       "#{Seen.watched_on_list_count(club, users.map(&:id))} of them already watched by somebody"
+  puts "The feed only reaches back ~50 entries — for the rest, rake import_watched[email,watched.csv]"
 end
 
 desc "Import a Letterboxd watched.csv for someone: rake import_watched[email,path] (asks first; CONFIRM=seen skips the prompt)"

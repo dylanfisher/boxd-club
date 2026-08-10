@@ -80,7 +80,7 @@ class Club < Sequel::Model
                "for nothing, so expect films only one of you has heard of.",
     "list" => "Ignores watchlists entirely and draws at random from one public " \
               "Letterboxd list, skipping anything a member has already watched. " \
-              "We can only see everyone's 72 most recent films, so import your " \
+              "We can only see what everyone has logged lately, so import your " \
               "watched.csv from Settings and it'll skip a great deal more."
   }.freeze
 
@@ -175,6 +175,31 @@ class Token < Sequel::Model
 end
 
 class Film < Sequel::Model
+  # How two rows are recognised as the same film when their slugs disagree.
+  #
+  # They disagree often. A scraped page carries Letterboxd's slug; watched.csv
+  # carries a boxd.it short link with no slug in it at all, so the importer
+  # builds one from the title. Normalised title plus year is the one thing both
+  # routes always have, and it's what lib/letterboxd.rb matches on before it
+  # creates a film.
+  #
+  # A film with no year gets no key. The year is what makes this specific
+  # enough to merge on, and without it two unrelated films sharing a title
+  # would become one — which is a worse failure than the duplicate row it saves.
+  def self.match_key(title, year)
+    return nil unless year.to_s =~ /\A\d{4}\z/
+
+    base = title.to_s.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")
+    base.empty? ? nil : "#{base}-#{year}"
+  end
+
+  # Kept in step here so nothing has to remember to. Titles do get corrected
+  # upstream, and a corrected title is a new key.
+  def before_save
+    self.match_key = Film.match_key(title, year)
+    super
+  end
+
   # Every reference to a film carries title, year, director and rating —
   # that's the house style, so it lives here rather than in each template.
   def display
@@ -231,6 +256,11 @@ class Round < Sequel::Model
   def cast_voters = club.voting_members.select { |u| voter_ids.include?(u.id) }
   # Everyone who still owes a Letterboxd log entry for the winner.
   def pending_loggers = club.linked_members.reject { |u| logged_user_ids.include?(u.id) }
+  # How this member came to be counted as having watched it, or nil for one who
+  # hasn't yet. The page says different things for the two: "Letterboxd shows
+  # you've logged it" is worth reading as confirmation, and "you marked this
+  # watched" is worth reading as a reminder of what we're going on.
+  def watch_log(user) = user && DB[:watch_logs].first(round_id: id, user_id: user.id)
 
   # Voting to skip the film this round landed on. See db/migrate/004.
   def skip_voter_ids = DB[:skip_votes].where(round_id: id).select_map(:user_id)

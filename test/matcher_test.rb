@@ -95,17 +95,15 @@ class MatcherTest < BoxdTest
     # filter, so the list is mostly films that must never appear, drawn several
     # times over.
     club = club(mode: "list", members: [a, b], ballot_size: 2)
-    verified_unseen, never_asked = films(2)
+    unwatched, also_unwatched = films(2)
     watched = films(10)
-    club_list(club, [*watched, verified_unseen, never_asked])
+    club_list(club, [*watched, unwatched, also_unwatched])
 
-    watched.each { |f| Seen.record!(user_id: a.id, film_id: f.id, seen: true) }
-    Seen.record!(user_id: a.id, film_id: verified_unseen.id, seen: false)
-    Seen.record!(user_id: b.id, film_id: verified_unseen.id, seen: false)
+    Seen.record_seen!(a.id, watched.map(&:id))
 
     5.times do
       picks = ids(Matcher.candidates_for(club))
-      assert_equal [verified_unseen.id, never_asked.id].sort, picks.sort
+      assert_equal [unwatched.id, also_unwatched.id].sort, picks.sort
     end
   end
 
@@ -115,11 +113,9 @@ class MatcherTest < BoxdTest
     seen_by_both, seen_by_one, also_seen_by_both = films(3)
     club_list(club, [seen_by_both, seen_by_one, also_seen_by_both])
 
-    [seen_by_both, also_seen_by_both].each do |f|
-      Seen.record!(user_id: a.id, film_id: f.id, seen: true)
-      Seen.record!(user_id: b.id, film_id: f.id, seen: true)
-    end
-    Seen.record!(user_id: a.id, film_id: seen_by_one.id, seen: true)
+    both = [seen_by_both.id, also_seen_by_both.id]
+    Seen.record_seen!(a.id, [*both, seen_by_one.id])
+    Seen.record_seen!(b.id, both)
 
     picks = ids(Matcher.candidates_for(club))
 

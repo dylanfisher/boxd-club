@@ -272,6 +272,43 @@ class RoutesTest < BoxdTest
     refute_includes last_response.body, "Vote to skip"
   end
 
+  # -- marking it watched by hand ---------------------------------------------
+
+  def test_marking_it_watched_from_the_page_is_recorded_and_reported
+    round = decided_round
+    sign_in(@member)
+
+    post "#{@club.path}/watched", "_csrf" => csrf_for(@club.path, "#{@club.path}/watched")
+
+    assert_equal [@member.id], round.logged_user_ids
+    follow_redirect!
+    assert_includes last_response.body, "Marked as watched"
+    assert_includes last_response.body, "marked this one watched"
+  end
+
+  # The button is for unsticking a round Letterboxd hasn't unstuck itself, so
+  # once it has there's nothing to press — the page says so instead.
+  def test_the_page_stops_offering_it_once_the_member_is_recorded
+    round = decided_round
+    DB[:watch_logs].insert(round_id: round.id, user_id: @member.id, detected_at: Time.now)
+    sign_in(@member)
+
+    get @club.path
+
+    assert_includes last_response.body, "Letterboxd shows you"
+    refute_includes last_response.body, "watched it</button>"
+  end
+
+  def test_there_is_nothing_to_mark_watched_while_a_ballot_is_open
+    Rounds.open!(@club)
+    sign_in(@member)
+
+    get @club.path
+
+    assert_equal 200, last_response.status
+    refute_includes last_response.body, "watched it</button>"
+  end
+
   # -- avatars ---------------------------------------------------------------
 
   def test_the_avatar_route_only_serves_files_it_wrote
@@ -399,7 +436,7 @@ class RoutesTest < BoxdTest
   # quietly suppress films nobody has watched.
   def test_relinking_to_another_account_throws_away_what_we_held
     sign_in(@member)
-    Seen.record!(user_id: @member.id, film_id: Film.first.id, seen: true)
+    Seen.record_seen!(@member.id, [Film.first.id])
     @member.update(watched_imported_at: Time.now)
 
     stub_method(Letterboxd, :check, ->(_username) { 42 }) do
@@ -472,6 +509,75 @@ class RoutesTest < BoxdTest
     assert_equal 302, last_response.status
     follow_redirect!
     assert_includes last_response.body, "A club needs a name."
+  end
+
+# /cache reports on what we hold and fetches nothing, so the thing worth
+# pinning is that every section still renders off the tables behind it.
+def test_the_cache_page_reports_watchlists_histories_and_club_lists
+  sign_in(@member)
+  listed = films(3)
+  list_club = club(name: "Top", mode: "list", members: [@member],
+                   list_owner: "dave", list_slug: "top")
+  club_list(list_club, listed)
+  Seen.record_seen!(@member.id, [listed.first.id])
+
+  get "/cache"
+
+  assert_equal 200, last_response.status
+  assert_includes last_response.body, "Watchlists we hold"
+  assert_includes last_response.body, "1 watched"
+  assert_includes last_response.body, "1 already watched"
+end
+
+  # The member rows count whatever the club's ballot actually draws on: a
+  # watchlist club's watchlists, a list club's list.
+  def test_the_admin_member_rows_count_what_the_club_draws_from
+    sign_in(user(admin: true))
+
+    get "/admin/clubs/#{@club.slug}"
+    assert_includes last_response.body, "4 on watchlist"
+
+    listed = films(3)
+    list_club = club(name: "Top", mode: "list", members: [@member],
+                     list_owner: "dave", list_slug: "top")
+    club_list(list_club, listed)
+    Seen.record_seen!(@member.id, [listed.first.id])
+
+    get "/admin/clubs/#{list_club.slug}"
+    assert_includes last_response.body, "1 of 3 watched"
+    refute_includes last_response.body, "on watchlist"
+  end
+
+  def test_an_admin_can_reset_a_club_by_typing_its_slug
+    sign_in(user(admin: true))
+    Rounds.open!(@club)
+
+    post_form "/admin/clubs/#{@club.slug}", "/admin/clubs/#{@club.slug}/reset",
+              confirm: @club.slug
+
+    assert_empty Round.where(club_id: @club.id).all
+  end
+
+  def test_a_reset_without_the_slug_does_nothing
+    sign_in(user(admin: true))
+    round = Rounds.open!(@club)
+
+    post_form "/admin/clubs/#{@club.slug}", "/admin/clubs/#{@club.slug}/reset",
+              confirm: "yes"
+
+    refute_nil Round[round.id]
+    follow_redirect!
+    assert_includes last_response.body, "Type #{@club.slug} in the box"
+  end
+
+  def test_a_member_cannot_reset_a_club
+    sign_in(@member)
+    round = Rounds.open!(@club)
+
+    post "/admin/clubs/#{@club.slug}/reset", "confirm" => @club.slug
+
+    assert_equal 403, last_response.status
+    refute_nil Round[round.id]
   end
 
   # A borrowed admin session shouldn't be able to mail a list.

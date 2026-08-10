@@ -34,8 +34,8 @@ One process, one container, no Redis, no worker, no build step.
 - **Nobody watches the same film twice.** The three watchlist modes get this
   free — a watchlist is by definition films you haven't seen. `list` mode
   doesn't, so it keeps its own record of what members have watched and drops any
-  film one of them has (`lib/seen.rb`). Films nobody has been asked about count
-  as unseen, so a club whose record is thin still gets a ballot.
+  film one of them has (`lib/seen.rb`). Films nobody has mentioned count as
+  unseen, so a club whose record is thin still gets a ballot.
 - **Films don't repeat.** A film the club has settled on never comes back. A
   film that has merely *been on a ballot* is held back until every eligible film
   has had a turn — only when the pool runs dry do repeats return, longest-unseen
@@ -45,6 +45,13 @@ One process, one container, no Redis, no worker, no build step.
   everyone votes; decided until everyone logs the winner on Letterboxd; then the
   next one opens by itself. The club page shows the date a round *opened*,
   because there is no date it's due.
+- **Marking it watched by hand** covers what the feed can't show us. Logging a
+  film on Letterboxd is picked up on its own, but the feed carries about fifty
+  entries and only diary entries and reviews — so a film ticked watched without
+  one, or one pushed off the end of a busy week, would leave the round waiting
+  on somebody who has watched it. Anyone the round is still waiting on can say
+  so themselves; the row is flagged `manual`, because their word and
+  Letterboxd's aren't the same claim.
 - **Voting to skip** is the way out of a decided round nobody can finish — the
   film isn't streaming anywhere, or the club has gone off it. Half the members,
   rounded up and never fewer than two (2 of 2, 2 of 3, 2 of 4, 3 of 5), ends the
@@ -223,7 +230,7 @@ unsubscribe footer don't show one.
 | `refresh` | Re-scrape every member's watchlist and every club list, ignoring freshness |
 | `advance` | Move every club along — open, tally, or check who's logged the winner |
 | `dry_run[club_slug]` | Build a ballot and print it — no round, no email |
-| `seen[club_slug,n]` | Check a list club's films against what its members have watched |
+| `seen[club_slug]` | Re-read what a list club's members have watched lately, and say how much of the list that rules out |
 | `import_watched[email,path]` | Import somebody's `watched.csv` from a Letterboxd export (asks you to confirm it isn't `watchlist.csv`) |
 | `enrich[n]` | Backfill director/rating/poster/backdrop for films missing them |
 | `avatars` | Fetch everyone's Letterboxd profile picture now, ignoring freshness |
@@ -274,7 +281,7 @@ config/boot.rb      DB connect + PRAGMAs, mail config
 config/schedule.rb  rufus cron, loaded only when ENABLE_SCHEDULER=1
 app.rb              routes only
 lib/models.rb       the Sequel models, and what "reachable" means
-lib/letterboxd.rb   watchlists, lists, film pages, avatars, "have they logged it?"
+lib/letterboxd.rb   watchlists, lists, film pages, avatars, what they've logged lately
 lib/tmdb.rb         poster and backdrop URLs (optional API key)
 lib/films.rb        director / rating / poster / backdrop, filled in lazily
 lib/avatars.rb      members' profile pictures: downloaded, or Gravatar links
@@ -399,8 +406,7 @@ What we deliberately *don't* fetch:
   and re-read after 90 days (`Films::REFRESH_AFTER`);
 - anything at all for a member already recorded as having logged the winner;
 - watch histories for members of watchlist-mode clubs — only `list` mode reads
-  them — and per-film checks for a list club that already has enough film
-  verified unseen to fill its next few ballots.
+  them.
 
 `LETTERBOXD_NO_DELAY=1` skips every deliberate sleep, for local dry runs.
 
@@ -448,10 +454,12 @@ writes the whole set in one transaction.
 
 ### Knowing when someone has watched it
 
-`letterboxd.com/{user}/film/{slug}/` returns 200 once they have a diary entry,
-review or rating for the film, and 404 otherwise — a film merely sitting on
-their watchlist 404s. That's the whole mechanism. One request per member who
-hasn't been seen logging it yet, four times a day at most. Members without a
+`letterboxd.com/{user}/rss/` carries the ~50 films they logged most recently,
+newest first; the round's winner is in it or it isn't. That's the whole
+mechanism. One request per member who hasn't been seen logging it yet, four
+times a day at most, and it answers whatever the film's age — which matters for
+a club working through a list of classics. A member who has logged nothing at
+all has no feed, which is a 404 and means exactly that. Members without a
 Letterboxd account still vote; they're just not waited on.
 
 The admin page's **check** button does the same thing on a background thread,
@@ -465,30 +473,39 @@ five films everybody saw years ago. The bar is that *nobody* has seen it — one
 member's "yes" drops a film, since the point is watching something together for
 the first time.
 
-Letterboxd won't serve a watch history in bulk. `/{user}/films/` answers with
-the 72 most recent, but every paginated form of it — `/page/2/`, `/by/date/`,
-`/by/name/`, `/rated/…` — returns 403 with `cf-mitigated: challenge` (checked
-2026-08-09), while watchlist and list pagination stay open. So three sources
-feed `seen_checks`, in ascending order of how much they cost:
+Letterboxd won't serve a watch history in bulk, so two sources feed
+`seen_checks`:
 
 | Source | Cost | Covers |
 |---|---|---|
 | An uploaded `watched.csv` from [the export](https://letterboxd.com/user/exportdata/) | nothing | their whole history |
-| `/{user}/films/`, in `daily_fetch` | 1 request per member per night | the 72 most recent |
-| `/{user}/film/{slug}/`, in `Letterboxd.warm_seen!` | 1 request per member per film | whatever the budget reaches |
+| `/{user}/rss/`, in `daily_fetch` | 1 request per member per night | the ~50 films they logged most recently |
 
-The last of those is capped at `Letterboxd::SEEN_BUDGET` (40) checks per club per
-night, and skipped entirely once a club has `Seen::RESERVE` ballots' worth of
-film verified — so it costs while a club is new and nothing once it has settled.
-At roughly three films per twelve requests for a club of four, that's ten films
-a night: the import is what makes a fresh list club filter properly on day one,
-which is why `/settings` and the welcome page both ask for it.
+The feed is the only route Letterboxd leaves open that is ordered by *when
+something was logged*, which is what makes it worth a nightly request: fifty
+entries is weeks of logging for most people, so nightly runs miss nothing short
+of someone logging fifty films in a day. What it can't reach is the history
+somebody had before they joined — that's the import's job, and why `/settings`
+and the welcome page both ask for it.
 
-A film nobody has been asked about counts as unseen. A cold club behaves exactly
-as it did before any of this existed, and the filter tightens as the record
-fills, rather than a new club going ballot-less on data we haven't collected.
-When a list runs dry the ballot falls back to what the fewest members have seen,
-so it never sends nothing.
+Two routes that look like they'd help and don't, both dropped:
+`/{user}/films/` sorts by *release date*, not by when anything was logged
+(measured 2026-08-10 — the years come back perfectly non-increasing on an
+account with hundreds logged), so it's a window on new releases that returns
+much the same page night after night while a member working through a list of
+classics never appears in it, and every form of it that would re-sort or
+paginate is 403 with `cf-mitigated: challenge`. `/{user}/film/{slug}/` answers
+per film, but 404s for plenty of films people have genuinely watched (three of
+twelve, measured against an account's own `watched.csv`) — a request each to be
+wrong.
+
+So every row in `seen_checks` is a film somebody watched. Nothing records a
+*no*: no route can tell us a member hasn't watched something, only what they
+have. A film nobody has mentioned therefore counts as unseen, which is the safe
+way round — a cold club behaves exactly as it did before any of this existed,
+and the filter tightens as the record fills, rather than a new club going
+ballot-less on data we haven't collected. When a list runs dry the ballot falls
+back to what the fewest members have seen, so it never sends nothing.
 
 Bulk imports skip films still on that member's own watchlist — `watched.csv` and
 `watchlist.csv` have identical columns, so the wrong file would otherwise mark
@@ -535,12 +552,11 @@ any of this, and they're the ones that always render.
 ```bash
 dokku apps:create boxd-club
 dokku storage:ensure-directory boxd-club
-dokku storage:mount boxd-club /var/lib/dokku/data/storage/boxd-club:/app/db
-# Downloaded avatars live in db/avatars/ — on the volume, so a deploy doesn't
-# wipe them. AVATAR_DIR moves them somewhere else if you'd rather.
+dokku storage:mount boxd-club /var/lib/dokku/data/storage/boxd-club:/app/data
 
 dokku config:set boxd-club \
-  DATABASE_URL=sqlite:///app/db/boxd.db \
+  DATABASE_URL=sqlite:///app/data/boxd.db \
+  AVATAR_DIR=/app/data/avatars \
   RACK_ENV=production \
   ENABLE_SCHEDULER=1 \
   TZ=America/Los_Angeles \
@@ -560,8 +576,23 @@ git push dokku main
 **The storage mount is not optional.** Without it the SQLite file lives inside
 the container and dies on every deploy.
 
+**Everything that must survive a deploy goes under the mount**, and the mount
+point is `/app/data` — deliberately *not* `/app/db`, which is a real directory
+in the image (migrations, seeds) and would be shadowed by the volume. So three
+things point at `/app/data` rather than at an app-relative path:
+
+- the database, via `DATABASE_URL`;
+- downloaded profile pictures, via `AVATAR_DIR` — without it they default to
+  `db/avatars/` inside the container and every deploy re-scrapes Letterboxd;
+- the rotating backups, which `lib/backup.rb` writes to a `backups/` directory
+  beside whatever file `DATABASE_URL` names. That one needs no configuration,
+  but it's the reason `Backup.dir` is derived from the database path instead of
+  from `APP_ROOT`. Locally the two are the same place, so a fixed `db/backups`
+  looks correct right up until it silently throws away every snapshot in
+  production.
+
 Migrations run themselves. `app.json` sets a Dokku predeploy task —
-`rake db:release` — which takes a snapshot to `db/backups/boxd-pre-migrate.db`
+`rake db:release` — which takes a snapshot to `backups/boxd-pre-migrate.db`
 and applies anything pending, then the new container starts. No restart step,
 and no forgetting.
 

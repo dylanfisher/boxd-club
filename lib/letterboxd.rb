@@ -7,7 +7,7 @@
 #   list(owner, slug)      /{owner}/list/{slug}/page/{n}/  — a curated list
 #   film_details(slug)     /film/{slug}/                   — director, rating, TMDB id
 #   avatar(user)           /{user}/watchlist/page/1/       — their profile picture
-#   logged?(user, slug)    /{user}/film/{slug}/            — have they watched it?
+#   recent_logs(user)      /{user}/rss/                    — what they've watched lately
 #   from_csv(io)           watchlist.csv from an account export
 #
 # Note which page `avatar` reads: the obvious one, /{user}/, is behind a
@@ -22,9 +22,13 @@
 #
 # Note the slug's year and the display year can disagree; the display name wins.
 #
-# logged? relies on /{user}/film/{slug}/ existing only when that member has a
-# diary entry, review or rating for the film. Verified 2026-08-08: films merely
-# sitting on their watchlist return 404, watched ones return 200.
+# Watch history comes from two places and nowhere else: an uploaded watched.csv,
+# and the RSS feed. There is no third route worth having. /{user}/films/ sorts by
+# release date rather than by when anything was logged, and every form of it that
+# would re-sort or paginate is challenged; /{user}/film/{slug}/ answers per film,
+# but 404s for plenty of films people have genuinely watched (of twelve an
+# account's own watched.csv listed, three came back 404 — measured 2026-08-10),
+# so it costs a request each to be wrong. Both are gone.
 
 require "net/http"
 require "openssl"
@@ -67,13 +71,6 @@ module Letterboxd
   # A listing page holds 28 films (100 for lists). Cap the walk so a markup
   # change can never become an unbounded crawl.
   MAX_PAGES = 200
-
-  # Per-film "has this member watched it?" checks a list-mode club may spend in
-  # one nightly run. It's the one thing here that costs a request per film per
-  # member, so it's capped rather than paced: 40 checks at the background pace
-  # is a quarter of an hour of trickle, and clubs stop being warmed at all once
-  # they have Seen::RESERVE ballots' worth of verified film in hand.
-  SEEN_BUDGET = 40
 
   # Ceiling on one response body, so a misbehaving page can't exhaust memory.
   MAX_BODY_BYTES = 8 << 20
@@ -156,16 +153,46 @@ module Letterboxd
     walk("#{BASE}/#{owner}/list/#{slug}", pace: pace, &on_page)
   end
 
-  # The 72 films a member watched most recently, newest first.
+  # The films a member has logged most recently, newest first.
   #
-  # One page and no further: /{user}/films/ answers, but every paginated form of
-  # it — /page/2/, /by/date/, /by/name/, /rated/… — is 403 with
-  # `cf-mitigated: challenge` (checked 2026-08-09), while watchlist and list
-  # pagination stay open. So a full history can't be walked the way a watchlist
-  # can. This tops up lib/seen.rb for free; the rest of the history comes from
-  # the per-film checks in `warm_seen!` and from an uploaded export.
-  def recent_films(username)
-    parse_entries(Nokogiri::HTML(get("#{BASE}/#{username}/films/")))
+  # The RSS feed, because it is the only route Letterboxd leaves open that is
+  # ordered by *when something was logged*. /{user}/films/ looks like the right
+  # page and isn't: it sorts by release date (measured 2026-08-10 — the years
+  # come back perfectly non-increasing on an account with hundreds logged), so
+  # it's a window on new releases and nothing else, returning much the same page
+  # night after night while a member working through a list of classics never
+  # appears in it. Every form of it that would re-sort or paginate — /page/2/,
+  # /by/date/, /by/entry-rating/, /year/1978/, /films/diary/ — is 403 with
+  # `cf-mitigated: challenge` (re-checked 2026-08-10).
+  #
+  # About 50 entries, which is weeks of logging for most people — comfortably
+  # longer than a round. Entries that aren't films (lists, follows) carry no
+  # /film/ link and drop out here.
+  #
+  # Same shape as `parse_entries`, since it feeds the same two places: the seen
+  # cache, which wants titles to match films on, and lib/rounds.rb, which only
+  # wants the slugs.
+  def recent_logs(username)
+    Nokogiri::XML(get("#{BASE}/#{username}/rss/")).css("item").filter_map do |item|
+      slug = item.at_css("link")&.text.to_s[%r{/film/([^/]+)/}, 1]
+      next if slug.nil?
+
+      # The letterboxd: namespace carries the title and year apart, which beats
+      # unpicking "Heavy Metal, 1981 - ★★★★" out of the item title. Matched on
+      # local name because the prefix is only bound in the feed's own root, and
+      # a hand-built XML fragment (a test, a future feed) needn't declare it. A
+      # diary entry always has both; anything that somehow doesn't falls back to
+      # the slug, which film_ids_for can still match on.
+      title = child_text(item, "filmTitle")
+      year = child_text(item, "filmYear")
+      { slug: slug,
+        title: title.empty? ? slug : title,
+        year: (Integer(year) if year =~ /\A\d{4}\z/) }
+    end
+  end
+
+  def child_text(node, name)
+    node.at_xpath("./*[local-name()='#{name}']")&.text.to_s.strip
   end
 
   def walk(base_path, pace: :interactive)
@@ -223,15 +250,6 @@ module Letterboxd
     return nil if src.empty? || src.include?("/static/")
 
     src.sub(AVATAR_CROP, "avtr-0-#{AVATAR_SIZE}-0-#{AVATAR_SIZE}-crop")
-  end
-
-  # Has this member logged the film — diary entry, review or rating?
-  # A film on their watchlist but not watched returns false.
-  def logged?(username, film_slug)
-    get("#{BASE}/#{username}/film/#{film_slug}/")
-    true
-  rescue NotFound
-    false
   end
 
   # Director, Letterboxd rating, TMDB id, a poster and the wide backdrop still,
@@ -307,9 +325,10 @@ module Letterboxd
   end
 
   # An uploaded watched.csv from letterboxd.com/user/exportdata/ — the only way
-  # to get a member's whole history, since Letterboxd challenges every paginated
-  # form of /{user}/films/ (see lib/seen.rb). Everything in the file is a film
-  # they've watched, so it lands in the seen cache wholesale.
+  # to get a member's whole history, since the feed only reaches back about 50
+  # entries and nothing else Letterboxd leaves open serves a history in bulk
+  # (see lib/seen.rb). Everything in the file is a film they've watched, so it
+  # lands in the seen cache wholesale.
   #
   # `upload` is Rack's multipart hash: { filename:, tempfile:, type: }. A bare
   # IO works too — the rake task passes one — but then `filename:` has to come
@@ -377,35 +396,117 @@ module Letterboxd
     { read: entries.size, on_file: Seen.user_count(user.id) }
   end
 
-  # Upserts films by slug. Films are shared across users and clubs, so they're
-  # never deleted here.
+  # Upserts films. Films are shared across users and clubs, so they're never
+  # deleted here.
   #
-  # One query for the lot rather than one per entry: an imported history runs to
-  # thousands of films, and a round-trip each made the import a minutes-long
-  # thing to do inside a web request.
+  # Slug first, then Film.match_key — normalised title and year. Matching on
+  # slug alone was wrong: watched.csv gives a boxd.it short link rather than a
+  # film path, so every imported film fell back to a slug built from its title
+  # and became a second row for a film we already had, invisible to anything
+  # holding the first one. That's how a member's imported history stopped
+  # filtering a list club's ballot. See db/migrate/010_film_match_keys.rb, which
+  # merged the rows this had already split.
+  #
+  # Two queries for the lot rather than a round-trip each: an imported history
+  # runs to thousands of films, and this happens inside a web request.
   def film_ids_for(entries)
-    films = Film.where(slug: entries.map { |e| e[:slug] }).all.to_h { |f| [f.slug, f] }
+    by_slug = Film.where(slug: entries.map { |e| e[:slug] }).all.to_h { |f| [f.slug, f] }
+    keys = entries.filter_map { |e| Film.match_key(e[:title], e[:year]) }.uniq
+    by_key = {}
+    # Oldest wins, so which film an entry resolves to doesn't depend on the
+    # order rows come back in. The migration left no duplicate keys behind, but
+    # two genuinely distinct films can share a title and a year, and it made no
+    # attempt to merge those.
+    Film.where(match_key: keys).order(:id).each { |f| by_key[f.match_key] ||= f } unless keys.empty?
+
+    # Resolved once, up front, rather than looked up again at the end: the pass
+    # below rewrites the very slugs these were matched on, so asking twice would
+    # get two different answers.
+    #
+    # Once per distinct slug, and the answer is reused: a slug is Letterboxd's
+    # identity for a film, so two entries carrying one are the same film however
+    # much their titles differ. Resolving them separately would put the second
+    # in `missing` and insert a row for a slug the first is about to adopt —
+    # a UNIQUE violation out of a member's upload.
+    claimed = {}
+    found = entries.map do |e|
+      claimed.fetch(e[:slug]) { claimed[e[:slug]] = existing_film(e, by_slug, by_key) }
+    end
 
     DB.transaction do
-      missing = entries.reject { |e| films.key?(e[:slug]) }.uniq { |e| e[:slug] }
+      missing = entries.each_index.reject { |i| found[i] }.uniq { |i| entries[i][:slug] }
       unless missing.empty?
-        # created_at by hand: this writes through the dataset rather than the
-        # model, so the timestamps plugin never sees it, and /cache orders the
-        # films it holds by that column.
+        # created_at and match_key by hand: this writes through the dataset
+        # rather than the model, so neither the timestamps plugin nor Film's
+        # before_save hook sees it. /cache orders the films it holds by
+        # created_at.
         now = Time.now
-        DB[:films].import(%i[slug title year created_at],
-                          missing.map { |e| [e[:slug], e[:title], e[:year], now] })
-        Film.where(slug: missing.map { |e| e[:slug] }).each { |f| films[f.slug] = f }
+        DB[:films].import(%i[slug title year match_key created_at],
+                          missing.map do |i|
+                            e = entries[i]
+                            [e[:slug], e[:title], e[:year], Film.match_key(e[:title], e[:year]), now]
+                          end)
+        fresh = Film.where(slug: missing.map { |i| entries[i][:slug] }).all.to_h { |f| [f.slug, f] }
+        entries.each_with_index { |e, i| found[i] ||= fresh.fetch(e[:slug]) }
       end
 
-      # Titles get corrected upstream occasionally; keep ours current.
-      entries.each do |e|
-        film = films[e[:slug]]
+      entries.each_with_index do |e, i|
+        film = found[i]
+        # Titles get corrected upstream occasionally; keep ours current.
+        # Through the model, so match_key follows the title.
         film.update(title: e[:title], year: e[:year]) if film.title != e[:title] || film.year != e[:year]
+        adopt_slug!(film, e[:slug])
       end
     end
 
-    entries.map { |e| films[e[:slug]].id }
+    # Deduplicated because two entries can now land on one film — a list that
+    # carries both a film and the row an import invented for it, say. Nothing
+    # downstream wants the same film twice, and both of the tables these ids
+    # reach have it as half of a primary key.
+    found.map(&:id).uniq
+  end
+
+  # The film an entry already has a row for, or nil.
+  #
+  # Slug is exact and settles it. Failing that the key does, but only when one
+  # side's slug was invented — that is, when it's exactly the key it would have
+  # been built from. Two *real* slugs that share a title and a year are two
+  # films: Letterboxd hands a short and a feature of the same name and year
+  # different slugs, and collapsing them would lose one for good.
+  #
+  # A key match is consumed, so only the first slug to reach it takes it. The
+  # rest is the same rule read the other way: a short and a feature sharing a
+  # title and a year both key to the invented row an import left behind, and
+  # letting both have it would collapse the pair that the rule above exists to
+  # keep apart. The loser matches nothing and gets a row of its own.
+  def existing_film(entry, by_slug, by_key)
+    return by_slug[entry[:slug]] if by_slug.key?(entry[:slug])
+
+    key = Film.match_key(entry[:title], entry[:year])
+    film = by_key[key]
+    return nil unless film && (entry[:slug] == key || film.slug == key)
+
+    by_key.delete(key)
+    film
+  end
+
+  # A film first seen in an import has a slug we invented, and every use of a
+  # slug — the Letterboxd link, the details fetch, the watched check — needs the
+  # real one. So when a scrape later turns up the same film by key, it hands its
+  # slug over.
+  #
+  # The invented slug is exactly the match key, which is what it was built from,
+  # so that equality is the whole test for "we made this up". A real slug can
+  # look the same (Letterboxd disambiguates with the year too), but then it's
+  # already right and there's nothing to adopt.
+  #
+  # Details are dropped with the slug: anything fetched under the invented one
+  # was fetched from a 404, so there's nothing there worth keeping and a stale
+  # `details_fetched_at` would stop lib/films.rb going back for the real thing.
+  def adopt_slug!(film, slug)
+    return if slug == film.slug || film.match_key.nil? || film.slug != film.match_key
+
+    film.update(slug: slug, details_fetched_at: nil)
   end
 
   # Persists a fetched watchlist, replacing whatever that user had before.
@@ -425,9 +526,9 @@ module Letterboxd
   end
 
   # Records films this member has watched. Unlike a watchlist this is never
-  # replaced, only added to: every source of it (the 72-film page, an uploaded
-  # export, a per-film check) is partial, and a film missing from one of them
-  # means "not in this batch", not "not watched".
+  # replaced, only added to: both sources of it (the feed, an uploaded export)
+  # are partial, and a film missing from one of them means "not in this batch",
+  # not "not watched".
   # One transaction, like store! next door: an import that dies halfway should
   # leave nothing behind rather than a history with a hole in it.
   def store_watched!(user, entries)
@@ -472,10 +573,9 @@ module Letterboxd
     jobs = due.shuffle.map { |u| -> { refresh_user!(u, pace: pace) } } +
            clubs.shuffle.map { |c| -> { refresh_list!(c, pace: pace) } } +
            # One request each, so these run every time rather than on a
-           # freshness clock: 72 recent films per member is the cheapest seen
-           # data there is.
-           watched_users.shuffle.map { |u| -> { refresh_watched!(u) } } +
-           list_clubs.shuffle.map { |c| -> { warm_seen!(c, pace: pace, force: force) } }
+           # freshness clock: a member's feed is the cheapest seen data there
+           # is, and a night missed is a week of logging we never pick up.
+           watched_users.shuffle.map { |u| -> { refresh_watched!(u) } }
 
     jobs.each_with_index do |job, i|
       # The stagger is the whole point: one member's watchlist finishes, then
@@ -551,18 +651,22 @@ module Letterboxd
     nil
   end
 
-  # One request: the member's 72 most recent films, straight into the seen
-  # cache. Cheap enough to do every run, and it keeps a club's list filtered
-  # against what people are watching now without any per-film checking.
+  # One request: whatever the member has logged lately, off their feed and
+  # straight into the seen cache. Cheap enough to do every run, and it keeps a
+  # club's list filtered against what people are watching now.
+  #
+  # The feed reaches back about 50 entries, so nightly runs cover everything
+  # short of somebody logging fifty films in a day. What it can't reach back to
+  # is the history they had before joining — that's what the import is for.
   def refresh_watched!(user)
-    entries = recent_films(user.letterboxd_username)
+    entries = recent_logs(user.letterboxd_username)
 
     if entries.empty?
-      # Either they've logged nothing, or the markup moved under us. Say so:
-      # this is the cheapest seen data there is, and it would otherwise go
-      # quiet for good without a line in the log.
+      # Either they've logged nothing, or the feed moved under us. Say so: this
+      # is the cheapest seen data there is, and it would otherwise go quiet for
+      # good without a line in the log.
       warn "[fetch] #{user.email} (#{user.letterboxd_username}): 0 recently watched — " \
-           "nothing logged, or the films page changed shape."
+           "nothing logged, or the feed changed shape."
       return nil
     end
 
@@ -570,9 +674,11 @@ module Letterboxd
     puts "[fetch] #{user.email} (#{user.letterboxd_username}): #{count} recently watched"
     count
   rescue NotFound
-    # A renamed or deleted account. Their other jobs are already skipped by the
-    # same 404, and the rest of the night's work isn't ours to take down.
-    warn "[fetch] #{user.email}: no such Letterboxd account (#{user.letterboxd_username})"
+    # A renamed or deleted account — or a member who has logged nothing at all,
+    # who has no feed to serve. Neither is worth taking the night's other work
+    # down for, and a renamed account's other jobs are skipped by the same 404.
+    warn "[fetch] #{user.email}: no feed at /#{user.letterboxd_username}/rss/ — " \
+         "renamed account, or nothing logged yet"
     nil
   rescue RateLimited => e
     warn "[fetch] #{user.email}: watched list rate-limited, skipping — #{e.message}"
@@ -580,66 +686,6 @@ module Letterboxd
   rescue *TRANSPORT_ERRORS => e
     warn "[fetch] #{user.email}: watched list #{e.class}: #{e.message}"
     nil
-  end
-
-  # Works through a list-mode club's list asking "has this member watched it?",
-  # one film and one member at a time, until the budget runs out.
-  #
-  # Two things keep the cost down. A film is dropped the moment one member says
-  # yes — the ballot rule is that nobody has seen it, so the rest of the club
-  # needn't be asked. And a club with Seen::RESERVE ballots' worth of verified
-  # film already in hand is skipped entirely, so this is a cost while a club is
-  # new and nothing once it has settled.
-  def warm_seen!(club, pace: :background, force: false, budget: SEEN_BUDGET)
-    users = club.linked_members
-    return 0 if users.empty?
-
-    user_ids = users.map(&:id)
-    if !force && Seen.stocked?(club, user_ids)
-      puts "[seen] club #{club.slug}: #{Seen.verified_unseen_count(club, user_ids)} films verified unseen — nothing to do"
-      return 0
-    end
-
-    spent = check_films!(club, users, pace: pace, budget: budget)
-    puts "[seen] club #{club.slug}: #{spent} check#{spent == 1 ? '' : 's'}, " \
-         "#{Seen.verified_unseen_count(club, user_ids)} films verified unseen"
-    spent
-  end
-
-  def check_films!(club, users, pace:, budget:)
-    spent = 0
-    film_ids = Seen.to_check(club, users.map(&:id), limit: budget)
-    films = Film.where(id: film_ids).all.to_h { |f| [f.id, f] }
-    pending = Seen.unchecked_users_by_film(film_ids, users)
-
-    film_ids.each do |film_id|
-      film = films[film_id]
-      next if film.nil?
-
-      pending.fetch(film_id, []).each do |user|
-        break if spent >= budget
-
-        pause(PACE.fetch(pace)) if spent.positive?
-        spent += 1
-        seen = logged?(user.letterboxd_username, film.slug)
-        Seen.record!(user_id: user.id, film_id: film_id, seen: seen)
-        # One 'yes' settles the film: it can't reach the ballot either way.
-        break if seen
-      rescue RateLimited => e
-        # Rescued ahead of the transport errors, and fatal to this club rather
-        # than to the run: challenged once means challenged for the next
-        # request too, and every remaining job in the night is somebody else's.
-        warn "[seen] club #{club.slug}: rate-limited after #{spent} check#{spent == 1 ? '' : 's'} — #{e.message}"
-        return spent
-      rescue *TRANSPORT_ERRORS => e
-        # No row written, so the film comes round again next run.
-        warn "[seen] club #{club.slug}: #{user.letterboxd_username}/#{film.slug} #{e.class}: #{e.message}"
-      end
-
-      break if spent >= budget
-    end
-
-    spent
   end
 
   # Cheap single-request check used at signup, before we trust a username.
@@ -660,9 +706,13 @@ module Letterboxd
     (m = DISPLAY_NAME.match(s)) ? [m[1].strip, Integer(m[2])] : [s, nil]
   end
 
+  # The slug for a film an export didn't give us one for. Film.match_key by
+  # definition, not merely by coincidence: everything that has to recognise an
+  # invented slug later — film_ids_for, adopt_slug!, migration 010 — does it by
+  # asking whether the slug is the film's own key, and that test is only sound
+  # while these two agree.
   def slugify(name, year)
-    base = name.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")
-    year.to_s =~ /\A\d{4}\z/ ? "#{base}-#{year}" : base
+    Film.match_key(name, year) || name.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")
   end
 
   def get(url)

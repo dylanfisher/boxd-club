@@ -78,14 +78,25 @@
 <section class="section">
   <h2>Members</h2>
   <ul class="films">
-    <% club.members.each do |m| %>
+    <% list_mode = club.list_mode == "list" %>
+    <%# Counted once, not once a member: list_size is a COUNT(*). %>
+    <% list_size = Fmt.number(club.list_size) if list_mode %>
+    <% members.each do |m| %>
       <li>
         <%== render("avatar", locals: { user: m }) %>
         <span class="title">
           <%= m.email %>
           <br><span class="meta">
             <%= m.letterboxd_username || "no Letterboxd account" %> ·
-            <%= m.watchlist_size %> films
+            <%# Which count is worth reading depends on where the club's films
+                come from: a watchlist club draws from these watchlists, while a
+                list club draws from its list and this member's share of it is
+                what they've already seen. %>
+            <% if list_mode %>
+              <%= Fmt.number(watched_on_list.fetch(m.id, 0)) %> of <%= list_size %> watched
+            <% else %>
+              <%= Fmt.number(m.watchlist_size) %> on watchlist
+            <% end %>
             <%# Empty and never-fetched look identical in a bare count, and
                 they need different fixes — one is a private watchlist, the
                 other is a member the nightly job hasn't reached yet. %>
@@ -187,6 +198,35 @@
         </button>
       </form>
     <% end %>
+  </div>
+</section>
+
+<%# The undo for a club that started before it was ready. Kept apart from the
+    overrides above, and behind a typed slug, because it's the only button on
+    this page that throws away something people did. %>
+<section class="section">
+  <div class="card">
+    <form method="post" action="/admin/clubs/<%= club.slug %>/reset">
+      <%== csrf_tag("/admin/clubs/#{club.slug}/reset") %>
+      <label for="confirm">Reset the club</label>
+      <p class="dim">
+        Deletes
+        <% if club.never_started? %>
+          every round — there aren't any yet.
+        <% else %>
+          all <%= club.rounds.size %> <%= club.rounds.size == 1 ? "round" : "rounds" %>,
+          with their ballots, votes and history.
+        <% end %>
+        <%= club.name %> goes back to never having played, and stays there until
+        you open the first round by hand — so it's the way to undo a club that
+        started before everyone had signed up. Members, invites and watchlists
+        are untouched. Ballot emails already sent will point at a round that's
+        gone.
+      </p>
+      <p><input type="text" id="confirm" name="confirm" placeholder="<%= club.slug %>"
+                autocomplete="off" required></p>
+      <button class="secondary" type="submit">Type the slug to reset</button>
+    </form>
   </div>
 </section>
 

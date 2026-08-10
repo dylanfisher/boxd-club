@@ -46,22 +46,21 @@
   </form>
 </section>
 
-<%# Only Letterboxd's export carries a full watch history: their site answers
-    "has this member logged this one film?" all day, but every paginated view of
-    a member's films is behind a challenge, so we can read the 72 most recent
-    and no further. Hence asking people to upload it. %>
+<%# Only Letterboxd's export carries a full watch history: the RSS feed we read
+    every night reaches back about 50 entries, and every route that would serve
+    more is behind a challenge. Hence asking people to upload it. %>
 <section class="section" id="import">
   <h2>Films you've already seen</h2>
   <p>Clubs that draw from a fixed list &mdash; a Top 250, someone's best-of &mdash; skip
-     films any of you has already watched. We read your 72 most recent from Letterboxd,
-     but the rest of your history only comes from their data export. We can't bulk read your
-     whole watched film history without rate limiting.</p>
+     films any of you has already watched. We read what you've logged lately from your
+     Letterboxd feed, but the rest of your history only comes from their data export. We can't
+     bulk read your whole watched film history without rate limiting.</p>
   <p class="dim">
     <% if seen_count.positive? %>
       <%= Fmt.number(seen_count) %> watched <%= seen_count == 1 ? "film" : "films" %> on file.
       Uploading again adds to it; nothing is ever removed.
     <% else %>
-      Nothing on file yet, so a fixed-list club can only skip your 72 most recent.
+      Nothing on file yet, so a fixed-list club can only skip what you've logged lately.
     <% end %>
   </p>
   <ol class="how">
