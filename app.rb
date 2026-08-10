@@ -226,6 +226,7 @@ class App < Roda
       view("cache", locals: {
              jobs: Cache.jobs,
              watchlists: Cache.watchlists(current_user),
+             watch_histories: Cache.watch_histories(current_user),
              club_lists: Cache.club_lists(current_user),
              films: Cache.films,
              counts: Cache.film_counts,

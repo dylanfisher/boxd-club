@@ -58,6 +58,44 @@ module Cache
     by_recency(rows)
   end
 
+  # One row per member: how much of their watch history we hold, and how it got
+  # here. Unlike a watchlist this isn't one read of one page — see lib/seen.rb —
+  # so the row separates the two numbers that matter: films we know they've
+  # watched, and films we've asked about at all. A member with a big second
+  # number and a small first one isn't a failed fetch; it's a list they've
+  # mostly not seen, which is the good case.
+  def watch_histories(viewer)
+    users = visible_users(viewer)
+    ids = users.map(&:id)
+    asked = seen_stats(ids)
+    watched = seen_stats(ids, seen: true)
+    rows = users.map do |user|
+      { user: user,
+        films: watched.dig(user.id, :films) || 0,
+        asked: asked.dig(user.id, :films) || 0,
+        imported_at: user.watched_imported_at,
+        fetched_at: asked[user.id] && timestamp(asked[user.id][:fetched_at]) }
+    end
+    by_recency(rows)
+  end
+
+  # How many seen_checks rows we hold per member and when the newest was
+  # written, for the whole section in one query. Two calls rather than a
+  # conditional count: SQLite stores the boolean as an integer and Postgres
+  # won't sum one, and a filtered aggregate isn't portable between them.
+  def seen_stats(ids, seen: nil)
+    return {} if ids.empty?
+
+    rows = DB[:seen_checks].where(user_id: ids)
+    rows = rows.where(seen: seen) unless seen.nil?
+    rows
+      .group(:user_id)
+      .select(:user_id,
+              Sequel.function(:count).*.as(:films),
+              Sequel.function(:max, :checked_at).as(:fetched_at))
+      .to_hash(:user_id)
+  end
+
   # The same, for clubs that draw on one fixed Letterboxd list rather than on
   # watchlists. Clubs in any other mode hold no list, so they aren't here.
   def club_lists(viewer)

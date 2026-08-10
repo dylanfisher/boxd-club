@@ -14,9 +14,9 @@
   <p class="lede">This is Boxd.Club's own copy of public Letterboxd data &mdash; not Letterboxd itself.</p>
   <p class="dim">
     Letterboxd has no API for projects like this one, so we read the public pages
-    on a schedule and keep what we read: the films on each member's watchlist, a
-    little metadata for the films that reach a ballot, and a copy of each member's
-    profile picture. Ballots are built from this copy, never from a live request.
+    on a schedule and keep what we read: the films on each member's watchlist,
+    which films they've already watched, a little metadata for the films that
+    reach a ballot, and a copy of each member's profile picture. Ballots are built from this copy, never from a live request.
     <a href="https://letterboxd.com/" target="letterboxd">Letterboxd</a> is always
     the source of truth &mdash; if something below is wrong, it only means we
     haven't read it again yet. Everything is listed newest first.
@@ -82,6 +82,64 @@
     <% end %>
   </ul>
 </section>
+
+<%# Hidden when we hold nothing: watch histories are only ever collected for
+    clubs that draw on a fixed list, so for everybody else an empty section
+    would only raise a question the page then has to answer. %>
+<% if watch_histories.any? { |row| row[:asked].positive? } %>
+  <section class="section">
+    <h2>Watch histories we hold</h2>
+    <p class="dim">
+      Which films we know each member has already seen, so a fixed-list club
+      doesn't offer the club a film it has watched. Letterboxd publishes only
+      the 72 most recent, so the rest is one film at a time overnight &mdash;
+      &ldquo;asked&rdquo; is how many films we've checked a member against, and
+      it grows slowly on purpose.
+      <%# The upload is the fast path, and this is the page where the slow one
+          is visible, so the offer belongs here. %>
+      <a href="/settings#import">Uploading your watched.csv</a> fills it in at once.
+    </p>
+    <ul class="films">
+      <% watch_histories.each do |row| %>
+        <li>
+          <%== render("avatar", locals: { user: row[:user] }) %>
+          <span class="title">
+            <% if row[:user].linked? %>
+              <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="letterboxd"><%= row[:user].letterboxd_username %></a>
+            <% else %>
+              <%= row[:user].display_name %>
+            <% end %>
+            <br>
+            <span class="meta">
+              <% if row[:fetched_at] %>
+                <%= Fmt.number(row[:films]) %> watched
+                <%# The second number is only worth the space when it says
+                    something the first doesn't: after an import the two are the
+                    same, and "370 watched · 370 asked about" reads as a bug. %>
+                <% if row[:asked] > row[:films] %>
+                  · <%= Fmt.number(row[:asked]) %> asked about
+                <% end %>
+                <%# Same again for the date: an import is the only thing that has
+                    happened to a member whose two numbers match, so its date is
+                    the checking date, and printing it twice says nothing. %>
+                <% if row[:asked] > row[:films] || row[:imported_at].nil? %>
+                  · last checked <%= Fmt.date(row[:fetched_at]) %> · <%= Fmt.ago(row[:fetched_at]) %>
+                <% end %>
+                <% if row[:imported_at] %>
+                  · imported <%= Fmt.ago(row[:imported_at]) %>
+                <% end %>
+              <% elsif row[:user].linked? %>
+                nothing cached yet
+              <% else %>
+                no Letterboxd account linked, so there's nothing to read
+              <% end %>
+            </span>
+          </span>
+        </li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>
 
 <% if club_lists.any? %>
   <section class="section">
