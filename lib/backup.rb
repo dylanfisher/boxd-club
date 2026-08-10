@@ -10,12 +10,14 @@ module Backup
 
   def dir = File.join(APP_ROOT, "db", "backups")
 
-  def run!
+  # `label:` writes to boxd-<label>.db instead of the day-of-week slot, so the
+  # pre-migration snapshot doesn't spend one of the seven nightly ones.
+  def run!(label: nil)
     path = db_path
     return warn("[backup] not a file-backed database, skipping") if path.nil?
 
     Dir.mkdir(dir) unless Dir.exist?(dir)
-    target = File.join(dir, "boxd-#{Time.now.strftime('%a').downcase}.db")
+    target = File.join(dir, "boxd-#{label || Time.now.strftime('%a').downcase}.db")
 
     # VACUUM INTO refuses to overwrite, so clear last week's file first.
     File.unlink(target) if File.exist?(target)

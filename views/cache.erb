@@ -86,7 +86,10 @@
 <% if club_lists.any? %>
   <section class="section">
     <h2>Club lists we hold</h2>
-    <p class="dim">Clubs that draw from one fixed Letterboxd list instead of watchlists.</p>
+    <p class="dim">Clubs that draw from one fixed Letterboxd list instead of watchlists.
+       &ldquo;Verified unseen&rdquo; is how much of the list we've checked against every member
+       and found nobody has watched &mdash; the pool a ballot draws from with confidence.
+       <a href="/settings#import">Importing your watched.csv</a> fills it in far faster than we can.</p>
     <ul class="films">
       <% club_lists.each do |row| %>
         <li>
@@ -100,6 +103,7 @@
               <% else %>
                 · nothing cached yet
               <% end %>
+              · <%= Fmt.number(row[:unseen]) %> verified unseen
               <% if row[:club].list_url %>· <%= row[:club].list_owner %>/<%= row[:club].list_slug %><% end %>
             </span>
           </span>
@@ -130,7 +134,9 @@
       <li>
         <%# The list is ordered by when a film entered the cache, so that date has
             to be on every row for the order to make sense. %>
-        <% note = "cached #{Fmt.ago(film.created_at)}" %>
+        <%# A handful of rows predate the cache date being recorded; they sort
+            to the bottom, and "cached " with nothing after it reads as a bug. %>
+        <% note = film.created_at ? "cached #{Fmt.ago(film.created_at)}" : "cache date unknown" %>
         <% note += film.details_fetched_at ? ", details read #{Fmt.ago(film.details_fetched_at)}" : ", title and year only so far" %>
         <%== render("film", locals: { film: film, note: note }) %>
       </li>

@@ -24,6 +24,18 @@ class User < Sequel::Model
   # about the site. An admin set the club up, so they've seen how it works.
   def needs_onboarding? = !admin && onboarded_at.nil?
   def linked? = !letterboxd_username.to_s.empty?
+
+  # The nudge to upload a watch history, at the foot of every page. Only for
+  # people it would actually change something for: a member of a club that
+  # draws on a fixed list, with an account to read, who hasn't uploaded one and
+  # hasn't waved the panel away. The other three modes read watchlists, which
+  # are unwatched by definition, so their ballots don't need any of this.
+  def needs_watched_import?
+    return false unless linked?
+    return false unless watched_imported_at.nil? && import_dismissed_at.nil?
+
+    clubs_dataset.where(active: true, list_mode: "list").any?
+  end
   def reachable? = active && unsubscribed_at.nil? && !verified_at.nil?
   def watchlist_size = DB[:watchlist_entries].where(user_id: id).count
   def letterboxd_url = linked? ? "https://letterboxd.com/#{letterboxd_username}/" : nil
@@ -67,7 +79,9 @@ class Club < Sequel::Model
     "union" => "Anything on anyone's watchlist, drawn at random. Overlap counts " \
                "for nothing, so expect films only one of you has heard of.",
     "list" => "Ignores watchlists entirely and draws at random from one public " \
-              "Letterboxd list."
+              "Letterboxd list, skipping anything a member has already watched. " \
+              "We can only see everyone's 72 most recent films, so import your " \
+              "watched.csv from Settings and it'll skip a great deal more."
   }.freeze
 
   # Shown next to the mode wherever a member (not just an admin) sees it.

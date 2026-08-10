@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "dokku": {
+      "predeploy": "bundle exec rake db:release"
+    }
+  },
   "healthchecks": {
     "web": [
       {

@@ -10,7 +10,9 @@
 #          no ballot. Members without a watchlist sit it out rather than
 #          emptying the intersection for everyone.
 #   union  everything on anyone's watchlist, chosen at random.
-#   list   one fixed Letterboxd list.
+#   list   one fixed Letterboxd list, minus anything a member has already
+#          watched — see lib/seen.rb. The other three modes need no such filter,
+#          since a watchlist is by definition films you haven't seen.
 #
 # Two rules on top of whichever source, both about not seeing the same films
 # week after week:
@@ -28,6 +30,7 @@
 # it had seen everything once.
 
 require_relative "models"
+require_relative "seen"
 
 module Matcher
   MIN_MATCHES = 2
@@ -57,12 +60,17 @@ module Matcher
     taken = spent + picks.map { |p| p[:film_id] }
     repeats = from_source(club, user_ids, exclude: taken, limit: limit * REPEAT_POOL)
               .sort_by { |p| seen[p[:film_id]].to_s }
-    picks + repeats.first(limit - picks.size)
+    picks += repeats.first(limit - picks.size)
+    return picks if picks.size >= limit
+
+    # Still short: every film left is one the club has seen. Last resort.
+    picks + backfill(club, user_ids, exclude: taken + picks.map { |p| p[:film_id] },
+                                     limit: limit - picks.size)
   end
 
   def from_source(club, user_ids, exclude:, limit:)
     case club.list_mode
-    when "list"  then from_list(club, exclude: exclude, limit: limit)
+    when "list"  then list_rows(club, exclude: exclude, seen_by: user_ids, limit: limit)
     when "cross" then cross(user_ids, exclude: exclude, limit: limit)
     when "union" then shuffled(user_ids, exclude: exclude, limit: limit)
     else              overlapping(user_ids, exclude: exclude, limit: limit)
@@ -101,14 +109,66 @@ module Matcher
     ds.all
   end
 
-  def from_list(club, exclude:, limit:)
+  # After both passes have come up short: a list club that has worked through
+  # its list would otherwise stop getting ballots the moment everyone had seen
+  # what was left. Rather than send nothing, fill up with what the fewest of
+  # them have seen.
+  #
+  # Out here rather than inside the 'list' branch on purpose. Filling the ballot
+  # in there meant the first pass always came back full, so candidates_for never
+  # saw a dry pool and the repeat pass — films that have merely been on a ballot
+  # before, longest-unseen first — never ran for a list club at all. A film
+  # nobody has watched but the club has already been offered beats one they've
+  # all seen, so this has to be the last thing tried, not the second.
+  #
+  # The other three modes read watchlists, which are by definition unwatched, so
+  # there's nothing here for them: an empty ballot means an empty watchlist.
+  def backfill(club, user_ids, exclude:, limit:)
+    return [] unless club.list_mode == "list"
+
+    least_seen(club, user_ids, exclude: exclude, limit: limit)
+  end
+
+  # 'list' mode: the club's fixed list, minus every film a member has already
+  # watched, drawn at random. Nobody having seen it is the bar — one member's
+  # 'yes' is enough to drop a film, since the point of the club is watching
+  # something together for the first time.
+  #
+  # Films nobody has been asked about pass, so a club whose seen cache is still
+  # cold gets the same ballot it always did (lib/seen.rb explains why that's the
+  # right way round).
+  #
+  # `seen_by` is dropped as a subquery rather than a list of ids: an imported
+  # history is thousands of films per member, which is not something to inline
+  # into a NOT IN.
+  def list_rows(club, exclude:, limit:, seen_by: nil)
+    return [] if limit <= 0
+
     ds = DB[:club_list_entries]
          .where(club_id: club.id)
          .select { [film_id, Sequel.as(0, :match_count)] }
          .order(Sequel.lit("RANDOM()"))
          .limit(limit)
     ds = ds.exclude(film_id: exclude) unless exclude.empty?
+    ds = ds.exclude(film_id: Seen.watched(seen_by)) unless seen_by.nil? || seen_by.empty?
     ds.all
+  end
+
+  # Whatever's left of the list, least-watched first. Shuffled before the sort
+  # rather than after, so films tied on the same count — which is most of them —
+  # come out in a different order each time.
+  def least_seen(club, user_ids, exclude:, limit:)
+    return [] if limit <= 0
+
+    ds = DB[:club_list_entries].where(club_id: club.id)
+    ds = ds.exclude(film_id: exclude) unless exclude.empty?
+
+    ids = ds.select_map(:film_id)
+    counts = Seen.counts(user_ids, ids)
+    ids.shuffle
+      .sort_by { |id| counts[id] || 0 }
+      .first(limit)
+      .map { |id| { film_id: id, match_count: 0 } }
   end
 
   # Films this club has settled on and is done with: every round's winner,

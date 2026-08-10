@@ -27,10 +27,15 @@ One process, one container, no Redis, no worker, no build step.
   | `own` (default) | ◍ | Films at least two members share, most-shared first, backfilled with single picks so obscure entries still surface |
   | `cross` | ◎ | Only films on *every* watchlist — members without one sit it out. Empty intersection means no ballot |
   | `union` | ◌ | Anything on anyone's watchlist, drawn at random |
-  | `list` | ▤ | One fixed Letterboxd list |
+  | `list` | ▤ | One fixed Letterboxd list, minus anything a member has already watched |
 
   The same wording lives in `Club::MODE_NOTES`, so admin and the club page can't
   drift apart.
+- **Nobody watches the same film twice.** The three watchlist modes get this
+  free — a watchlist is by definition films you haven't seen. `list` mode
+  doesn't, so it keeps its own record of what members have watched and drops any
+  film one of them has (`lib/seen.rb`). Films nobody has been asked about count
+  as unseen, so a club whose record is thin still gets a ballot.
 - **Films don't repeat.** A film the club has settled on never comes back. A
   film that has merely *been on a ballot* is held back until every eligible film
   has had a turn — only when the pool runs dry do repeats return, longest-unseen
@@ -206,6 +211,7 @@ unsubscribe footer don't show one.
 | Task | What it does |
 |---|---|
 | `db:migrate` / `db:status` | Schema |
+| `db:release` | The deploy hook: snapshot, then migrate, if anything is pending |
 | `clubs` | Every club and where its round is |
 | `club["Name",mode,list_url]` | Create a club |
 | `invite[email,club_slug]` | Invite someone (club optional) |
@@ -217,6 +223,8 @@ unsubscribe footer don't show one.
 | `refresh` | Re-scrape every member's watchlist and every club list, ignoring freshness |
 | `advance` | Move every club along — open, tally, or check who's logged the winner |
 | `dry_run[club_slug]` | Build a ballot and print it — no round, no email |
+| `seen[club_slug,n]` | Check a list club's films against what its members have watched |
+| `import_watched[email,path]` | Import somebody's `watched.csv` from a Letterboxd export (asks you to confirm it isn't `watchlist.csv`) |
 | `enrich[n]` | Backfill director/rating/poster/backdrop for films missing them |
 | `avatars` | Fetch everyone's Letterboxd profile picture now, ignoring freshness |
 | `seed_demo` | A demo club on real public watchlists — offline; `seed_demo[fetch]` scrapes instead |
@@ -238,6 +246,7 @@ lib/avatars.rb      members' profile pictures: downloaded, or Gravatar links
 lib/cache.rb        what /cache reads back — nothing here fetches
 lib/fmt.rb          the one date format, "3 days ago", thousands separators
 lib/matcher.rb      candidate selection per club mode, and not repeating films
+lib/seen.rb         what members have already watched, for list-mode clubs
 lib/clubs.rb        club CRUD and membership
 lib/invites.rb      invites and sign-in links
 lib/rounds.rb       open! / advance! / tally! / check_logs! / claim!
@@ -257,7 +266,7 @@ each club a regular chance to move itself along.
 
 | When (local time) | Job |
 |---|---|
-| Daily 08:00 | `daily_fetch` — re-scrape watchlists and club lists |
+| Daily 08:00 | `daily_fetch` — re-scrape watchlists, club lists, and what list-club members have watched |
 | Every 4h | `advance` — open / tally / check who's logged the winner |
 | Daily 03:30 | `cleanup` — prune expired tokens, back up the database |
 
@@ -353,7 +362,10 @@ What we deliberately *don't* fetch:
 - film pages for anything that hasn't reached a ballot: a few thousand films sit
   on the watchlists and a handful reach a ballot, so details are filled in there
   and re-read after 90 days (`Films::REFRESH_AFTER`);
-- anything at all for a member already recorded as having logged the winner.
+- anything at all for a member already recorded as having logged the winner;
+- watch histories for members of watchlist-mode clubs — only `list` mode reads
+  them — and per-film checks for a list club that already has enough film
+  verified unseen to fill its next few ballots.
 
 `LETTERBOXD_NO_DELAY=1` skips every deliberate sleep, for local dry runs.
 
@@ -410,6 +422,43 @@ Letterboxd account still vote; they're just not waited on.
 The admin page's **check** button does the same thing on a background thread,
 because a Letterboxd that hangs rather than refuses is 45 seconds of timeout per
 member. It says so, and the page is worth reloading a minute later.
+
+### Knowing what they watched before they got here
+
+Only `list` mode needs this: point a club at a Top 250 and the obvious ballot is
+five films everybody saw years ago. The bar is that *nobody* has seen it — one
+member's "yes" drops a film, since the point is watching something together for
+the first time.
+
+Letterboxd won't serve a watch history in bulk. `/{user}/films/` answers with
+the 72 most recent, but every paginated form of it — `/page/2/`, `/by/date/`,
+`/by/name/`, `/rated/…` — returns 403 with `cf-mitigated: challenge` (checked
+2026-08-09), while watchlist and list pagination stay open. So three sources
+feed `seen_checks`, in ascending order of how much they cost:
+
+| Source | Cost | Covers |
+|---|---|---|
+| An uploaded `watched.csv` from [the export](https://letterboxd.com/user/exportdata/) | nothing | their whole history |
+| `/{user}/films/`, in `daily_fetch` | 1 request per member per night | the 72 most recent |
+| `/{user}/film/{slug}/`, in `Letterboxd.warm_seen!` | 1 request per member per film | whatever the budget reaches |
+
+The last of those is capped at `Letterboxd::SEEN_BUDGET` (40) checks per club per
+night, and skipped entirely once a club has `Seen::RESERVE` ballots' worth of
+film verified — so it costs while a club is new and nothing once it has settled.
+At roughly three films per twelve requests for a club of four, that's ten films
+a night: the import is what makes a fresh list club filter properly on day one,
+which is why `/settings` and the welcome page both ask for it.
+
+A film nobody has been asked about counts as unseen. A cold club behaves exactly
+as it did before any of this existed, and the filter tightens as the record
+fills, rather than a new club going ballot-less on data we haven't collected.
+When a list runs dry the ballot falls back to what the fewest members have seen,
+so it never sends nothing.
+
+Bulk imports skip films still on that member's own watchlist — `watched.csv` and
+`watchlist.csv` have identical columns, so the wrong file would otherwise mark
+everything they *want* to see as seen. (The upload rejects a file named
+`watchlist.csv` outright, and says so if you hand it the zip.)
 
 ### Look
 
@@ -476,10 +525,31 @@ git push dokku main
 **The storage mount is not optional.** Without it the SQLite file lives inside
 the container and dies on every deploy.
 
-Migrations run by hand — `dokku run boxd-club bundle exec rake db:migrate` — so
-a bad migration can't wedge future deploys. A *brand-new* empty database
-bootstraps itself on first boot, so the first deploy doesn't crashloop.
+Migrations run themselves. `app.json` sets a Dokku predeploy task —
+`rake db:release` — which takes a snapshot to `db/backups/boxd-pre-migrate.db`
+and applies anything pending, then the new container starts. No restart step,
+and no forgetting.
 
-Restart dokku after migrations `dokku ps:restart boxd-club`
+Three things make that safe rather than the usual release-phase gamble:
+
+- The predeploy container gets the app's deploy-phase storage mounts, so it
+  migrates the real database on the volume — not a throwaway copy inside the
+  image. (Dokku's `docker-args-deploy` trigger, which the storage plugin answers
+  with the `-v`.)
+- A failed task fails the *deploy*. The old container keeps serving old code
+  against the old schema, and pushing a fixed migration is the whole recovery —
+  nothing is wedged. SQLite has transactional DDL and Sequel wraps each
+  migration in one, so a migration that raises leaves no half-applied schema.
+- It's a no-op when `schema_info` is already current, so ordinary deploys don't
+  churn the database or the backups.
+
+It runs while the old container is still writing, so a migration on a large
+table can meet `SQLITE_BUSY`; the 5s `busy_timeout` in `config/boot.rb` covers
+the pauses that actually happen here. A *brand-new* empty database still
+bootstraps itself on first boot, so a fresh volume doesn't crashloop.
+
+`rake db:migrate` is still there for migrating by hand
+(`dokku run boxd-club bundle exec rake db:migrate`), and `rake db:status` says
+what's pending.
 
 `/up` is the health check: it touches the database and returns plain text.

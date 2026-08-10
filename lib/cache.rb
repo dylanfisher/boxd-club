@@ -10,6 +10,7 @@
 
 require_relative "models"
 require_relative "letterboxd"
+require_relative "seen"
 require_relative "films"
 require_relative "avatars"
 
@@ -63,8 +64,32 @@ module Cache
     clubs = viewer.admin ? Club.order(:name).all : viewer.clubs_dataset.order(:name).all
     clubs = clubs.select { |c| c.list_mode == "list" }
     stats = entry_stats(:club_list_entries, :club_id, clubs.map(&:id))
-    rows = clubs.map { |club| stat_row(:club, club, stats[club.id]) }
+    members = linked_member_ids(clubs.map(&:id))
+    rows = clubs.map do |club|
+      # How much of the list has been checked against everybody and come back
+      # clean. It's the number that explains a thin ballot, so it's here rather
+      # than only in the logs.
+      unseen = Seen.verified_unseen_count(club, members.fetch(club.id, []))
+      stat_row(:club, club, stats[club.id]).merge(unseen: unseen)
+    end
     by_recency(rows)
+  end
+
+  # club_id => the ids of its members with a Letterboxd account, for the whole
+  # section at once. club.linked_members is two queries and a full model load
+  # per club, on a page whose whole contract is being cheap.
+  def linked_member_ids(club_ids)
+    return {} if club_ids.empty?
+
+    DB[:memberships]
+      .join(:users, id: :user_id)
+      .where(Sequel[:memberships][:club_id] => club_ids)
+      .where(Sequel[:users][:active] => true, Sequel[:users][:unsubscribed_at] => nil)
+      .exclude(Sequel[:users][:verified_at] => nil)
+      .exclude(Sequel[:users][:letterboxd_username] => [nil, ""])
+      .select_map([Sequel[:memberships][:club_id], Sequel[:users][:id]])
+      .group_by(&:first)
+      .transform_values { |rows| rows.map(&:last) }
   end
 
   # How many rows we hold per member (or per club), and when the newest of them

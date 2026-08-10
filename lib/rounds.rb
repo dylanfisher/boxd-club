@@ -11,6 +11,7 @@
 
 require_relative "models"
 require_relative "matcher"
+require_relative "seen"
 require_relative "tokens"
 require_relative "mailer"
 require_relative "votes"
@@ -315,7 +316,16 @@ module Rounds
     puts "#{club.name} (#{club.slug}) — mode: #{club.list_mode}"
     puts "members: #{members.size}"
     members.each do |u|
-      puts format("  %-30s %-18s %4d films", u.email, u.letterboxd_username || "(no account)", u.watchlist_size)
+      puts format("  %-30s %-18s %4d films%s", u.email, u.letterboxd_username || "(no account)",
+                  u.watchlist_size,
+                  club.list_mode == "list" ? format(", %d watched", Seen.user_count(u.id)) : "")
+    end
+
+    if club.list_mode == "list"
+      user_ids = members.select(&:linked?).map(&:id)
+      list_size = DB[:club_list_entries].where(club_id: club.id).count
+      puts "\nlist: #{list_size} films, #{Seen.watched_on_list_count(club, user_ids)} already watched by somebody, " \
+           "#{Seen.verified_unseen_count(club, user_ids)} verified unseen"
     end
 
     picks = Matcher.candidates_for(club)

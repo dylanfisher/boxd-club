@@ -1,0 +1,25 @@
+<%# Shown at the foot of every page to members of a fixed-list club who haven't
+    uploaded their watch history, until they do or they dismiss it. Those clubs
+    skip films any of you has already seen, and without this we only know the
+    72 most recent — so the ballot keeps offering films people have watched. %>
+<section class="onboarding import-prompt">
+  <form method="post" action="/import/dismiss" class="dismiss">
+    <%== csrf_tag("/import/dismiss") %>
+    <input type="hidden" name="to" value="<%= path %>">
+    <button type="submit" class="link" aria-label="Dismiss this reminder">&times;</button>
+  </form>
+
+  <h2>Tell us what you've seen</h2>
+  <p>You're in a club that draws from a fixed list, so it skips films any of you
+     has already watched. Letterboxd only tells us your 72 most recent, and the
+     rest of your history has to come from their export &mdash; otherwise the
+     ballot will keep offering you films you saw years ago.</p>
+  <ol class="how">
+    <li>Open <a href="https://letterboxd.com/user/exportdata/" target="letterboxd">letterboxd.com/user/exportdata/</a>
+        and press <strong>Export your data</strong>. It arrives as a zip.</li>
+    <li>Unzip it. Inside is <strong>watched.csv</strong> &mdash; that's the one.
+        (<code>watchlist.csv</code> is films you want to see; we already read those.)</li>
+    <li><a href="/settings#import">Upload it on your settings page</a>.</li>
+  </ol>
+  <p class="dim">We keep the film names and nothing else &mdash; no dates, no ratings, no reviews.</p>
+</section>

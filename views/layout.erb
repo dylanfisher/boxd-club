@@ -357,6 +357,9 @@
     color: var(--dim); font-size: 1.2rem; line-height: 1;
   }
 
+  /* Same card, but it sits under the page instead of above it. */
+  .import-prompt { margin: var(--space-7) 0 0; }
+
   /* The backdrop assumes it's the first thing in main and pulls up into the
      header; with the panel above it, it's just a picture in the page. */
   .onboarding ~ .backdrop { margin-top: 0; }
@@ -490,6 +493,11 @@
 <%# Raw on purpose: the view escapes its own interpolations, and the render
     plugin runs in escape mode, so escaping here would escape the whole page. %>
 <%== yield %>
+<%# At the foot of the page rather than the top: it's a nudge, not something to
+    read before whatever they came here for. %>
+<% if current_user&.needs_watched_import? %>
+  <%== render("import_prompt", locals: { path: request.path }) %>
+<% end %>
 </main>
 </div>
 <footer class="site-footer">

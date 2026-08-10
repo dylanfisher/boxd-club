@@ -12,6 +12,7 @@ require_relative "lib/throttle"
 require_relative "lib/letterboxd"
 require_relative "lib/avatars"
 require_relative "lib/cache"
+require_relative "lib/seen"
 require_relative "lib/quotes"
 require_relative "lib/fmt"
 require_relative "lib/email_previews" if APP_ENV == "development"
@@ -131,13 +132,44 @@ class App < Roda
       r.redirect Tokens.safe_path(r.params["to"])
     end
 
+    # The same, for the "upload your watch history" panel at the foot of the
+    # page. Dismissing it is for good — it's a reminder, and one that outstays
+    # its welcome is worse than no reminder.
+    r.post "import", "dismiss" do
+      check_csrf!
+      current_user&.update(import_dismissed_at: Time.now)
+      r.redirect Tokens.safe_path(r.params["to"])
+    end
+
     # Changing the Letterboxd account on file. A page of its own rather than a
     # field on the club page: it's an account-level thing, done rarely, and it
     # throws away the watchlist we hold under the old name.
     r.on "settings" do
       next r.redirect("/login") unless current_user
 
-      r.get { view("settings", locals: { user: current_user, username: current_user.letterboxd_username, error: nil }) }
+      r.get do
+        view("settings", locals: { user: current_user, username: current_user.letterboxd_username,
+                                   error: nil, seen_count: Seen.user_count(current_user.id) })
+      end
+
+      # Backfilling what they've already watched, from the export at
+      # letterboxd.com/user/exportdata/. Letterboxd won't serve a watch history
+      # in bulk (see lib/seen.rb), so this upload is the only way to have a
+      # list-mode club's ballot skip the films they saw years ago.
+      r.post "import" do
+        check_csrf!
+        result = Letterboxd.import_watched!(current_user, r.params["watched"])
+        # Two numbers, because they differ: films already on file, and films
+        # back on their watchlist, are read and not recorded.
+        flash["notice"] = "Read #{Fmt.number(result[:read])} " \
+                          "#{result[:read] == 1 ? 'film' : 'films'} from that file — " \
+                          "#{Fmt.number(result[:on_file])} watched on file now. " \
+                          "Your clubs won't put those on a ballot."
+        r.redirect "/settings"
+      rescue Letterboxd::BadImport => e
+        flash["error"] = e.message
+        r.redirect "/settings"
+      end
 
       # The way back from an unsubscribe. Without one, a one-click POST from a
       # mail client is a permanent decision made by a mis-tap.
@@ -161,14 +193,21 @@ class App < Roda
         end
 
         error = validate_username(username, user)
-        next view("settings", locals: { user: user, username: username, error: error }) if error
+        if error
+          next view("settings", locals: { user: user, username: username, error: error,
+                                          seen_count: Seen.user_count(user.id) })
+        end
 
         user.update(letterboxd_username: username)
         # What we hold belongs to the old account: the watchlist isn't theirs
-        # any more, and the face is the wrong face. Drop the first outright
-        # rather than let a stale one keep voting; refetch both off the
-        # response path, since neither is worth making them wait for.
+        # any more, the watch history is somebody else's, and the face is the
+        # wrong face. Drop the first two outright rather than let stale data
+        # keep voting — a single 'seen' drops a film for a whole list club, so
+        # a stranger's history would quietly suppress films nobody has watched.
+        # Refetch off the response path, since none of it is worth waiting for.
         DB[:watchlist_entries].where(user_id: user.id).delete
+        DB[:seen_checks].where(user_id: user.id).delete
+        user.update(watched_imported_at: nil)
         Rounds.in_background do
           Avatars.refresh!(user, force: true)
           Letterboxd.refresh_user!(user)

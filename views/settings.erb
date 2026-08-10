@@ -45,3 +45,70 @@
     <button type="submit">Save</button>
   </form>
 </section>
+
+<%# Only Letterboxd's export carries a full watch history: their site answers
+    "has this member logged this one film?" all day, but every paginated view of
+    a member's films is behind a challenge, so we can read the 72 most recent
+    and no further. Hence asking people to upload it. %>
+<section class="section" id="import">
+  <h2>Films you've already seen</h2>
+  <p>Clubs that draw from a fixed list &mdash; a Top 250, someone's best-of &mdash; skip
+     films any of you has already watched. We read your 72 most recent from Letterboxd,
+     but the rest of your history only comes from their data export. We can't bulk read your
+     whole watched film history without rate limiting.</p>
+  <p class="dim">
+    <% if seen_count.positive? %>
+      <%= Fmt.number(seen_count) %> watched <%= seen_count == 1 ? "film" : "films" %> on file.
+      Uploading again adds to it; nothing is ever removed.
+    <% else %>
+      Nothing on file yet, so a fixed-list club can only skip your 72 most recent.
+    <% end %>
+  </p>
+  <ol class="how">
+    <li>Open <a href="https://letterboxd.com/user/exportdata/" target="letterboxd">letterboxd.com/user/exportdata/</a>
+        and press <strong>Export your data</strong>. It arrives as a zip.</li>
+    <li>Unzip it. Inside is <strong>watched.csv</strong> &mdash; that's the one.
+        (<code>watchlist.csv</code> is films you want to see; we already read those.)</li>
+    <li>Upload it here.</li>
+  </ol>
+  <form method="post" action="/settings/import" enctype="multipart/form-data" id="import-form">
+    <%== csrf_tag("/settings/import") %>
+    <p><input type="file" name="watched" accept=".csv,text/csv" required></p>
+    <p class="dim">We keep the film names and nothing else &mdash; no dates, no ratings, no reviews.</p>
+    <button type="submit">Import</button>
+  </form>
+</section>
+
+<script>
+  // Nothing is ever removed from a watch history, so importing the wrong file
+  // is the one mistake here you can't take back. Confirm before uploading, and
+  // name the file back to them — watchlist.csv is the easy slip.
+  (function () {
+    var form = document.getElementById('import-form');
+    if (!form) return;
+    form.addEventListener('submit', function (e) {
+      var file = form.querySelector('input[type=file]').files[0];
+      if (!file) return;
+      // Browsers rename duplicate downloads (watched (1).csv), so match on the
+      // stem rather than the exact name. Anything else gets a louder warning,
+      // and watchlist.csv — the file sitting next to it in the same zip, and
+      // the one people actually grab by mistake — gets named outright.
+      var name = file.name.toLowerCase();
+      // One paragraph per string, no hard wrapping — the dialog wraps to its
+      // own width, and breaking the lines ourselves fights it.
+      var paras, mismatch = !/^watched\b/.test(name);
+      if (/^watchlist\b/.test(name)) {
+        paras = ['WARNING: "' + file.name + '" looks like your watchlist, not your watch history.',
+                 'watchlist.csv is films you want to see. Importing it would mark them all watched and stop your clubs from ever picking them. You want watched.csv from the same export.'];
+      } else if (mismatch) {
+        paras = ['WARNING: "' + file.name + '" is not named watched.csv.',
+                 'A Letterboxd export calls your watch history watched.csv. Check you unzipped the export and picked that one — not watchlist.csv, which is films you want to see.'];
+      } else {
+        paras = ['Import "' + file.name + '" as films you have already watched?',
+                 'This should be watched.csv from your Letterboxd export — films you want to see live in watchlist.csv, and we already read those.'];
+      }
+      paras.push('Nothing can be removed once imported.' + (mismatch ? ' Import anyway?' : ''));
+      if (!window.confirm(paras.join('\n\n'))) e.preventDefault();
+    });
+  })();
+</script>

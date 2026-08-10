@@ -17,6 +17,24 @@ namespace :db do
     puts "migrated to #{DB[:schema_info].first[:version]}"
   end
 
+  desc "The deploy hook: snapshot, then migrate, only if anything is pending"
+  task :release do
+    Sequel.extension :migration
+    if Sequel::Migrator.is_current?(DB, MIGRATIONS_DIR)
+      puts "schema is current — nothing to migrate"
+      next
+    end
+
+    # This runs before the new container is scheduled, with the old one still
+    # serving, so the snapshot is of a database nobody has migrated yet — the
+    # thing you'd want back if a migration is wrong in a way SQLite accepts.
+    require_relative "lib/backup"
+    Backup.run!(label: "pre-migrate")
+
+    Sequel::Migrator.run(DB, MIGRATIONS_DIR)
+    puts "migrated to #{DB[:schema_info].first[:version]}"
+  end
+
   desc "Show migration status"
   task :status do
     Sequel.extension :migration
@@ -95,6 +113,57 @@ task :refresh do
   # You asked for it by hand, so it doesn't skip fresh data and doesn't sit
   # through the nightly job's minutes-long staggers.
   Letterboxd.refresh_all!(pace: :interactive, force: true)
+end
+
+desc "Check a list club's films against what its members have watched: rake seen[slug]"
+task :seen, %i[slug budget] do |_t, args|
+  require_relative "lib/letterboxd"
+  club = find_club(args[:slug])
+  abort "#{club.slug} is in #{club.list_mode} mode — only list clubs need this" unless club.list_mode == "list"
+
+  users = club.linked_members
+  abort "no members with a Letterboxd account in #{club.slug}" if users.empty?
+  list_size = DB[:club_list_entries].where(club_id: club.id).count
+  abort "no list cached for #{club.slug} — try: rake refresh" if list_size.zero?
+
+  users.each do |u|
+    puts format("  %-20s %5d watched films on file", u.letterboxd_username, Seen.user_count(u.id))
+  end
+  puts "\n#{list_size} films on the list, " \
+       "#{Seen.verified_unseen_count(club, users.map(&:id))} verified unseen"
+
+  # By hand means you want it now: interactive pace, and it doesn't stop at the
+  # reserve the nightly job settles for.
+  budget = (args[:budget] || Letterboxd::SEEN_BUDGET).to_i
+  puts "checking up to #{budget} — one request each, so this takes a minute"
+  Letterboxd.warm_seen!(club, pace: :interactive, force: true, budget: budget)
+end
+
+desc "Import a Letterboxd watched.csv for someone: rake import_watched[email,path] (asks first; CONFIRM=seen skips the prompt)"
+task :import_watched, %i[email path] do |_t, args|
+  require_relative "lib/letterboxd"
+  user = User.first(email: args[:email].to_s.downcase) or abort "usage: rake import_watched[you@example.com,watched.csv]"
+  path = args[:path] or abort "usage: rake import_watched[#{user.email},watched.csv]"
+
+  # watched.csv and watchlist.csv have identical columns, so nothing about the
+  # file itself says which is which — and the wrong one marks every film this
+  # person *wants* to see as already seen, which nothing in the UI undoes.
+  # The web upload catches it by filename; here the name is checked too (it
+  # wasn't being passed through at all, so the guard never fired on this path),
+  # and on top of that you have to say out loud that you know what you're doing.
+  puts "About to mark every film in #{File.basename(path)} as already watched by #{user.email}."
+  puts "This must be watched.csv — films they have SEEN — not watchlist.csv, which is films"
+  puts "they want to see. Importing the wrong one can't be undone from the site."
+  print "Type 'seen' to go ahead: "
+  answer = ($stdin.tty? ? $stdin.gets : ENV.fetch("CONFIRM", nil)).to_s.strip
+  abort "Nothing imported." unless answer == "seen"
+
+  result = File.open(path, "r") do |io|
+    Letterboxd.import_watched!(user, io, filename: File.basename(path))
+  end
+  puts "#{user.email}: read #{result[:read]} films (#{result[:on_file]} watched films on file)"
+rescue Letterboxd::BadImport => e
+  abort e.message
 end
 
 desc "Fetch everyone's Letterboxd profile picture"

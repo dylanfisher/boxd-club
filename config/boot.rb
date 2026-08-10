@@ -33,11 +33,12 @@ Sequel::Model.plugin :timestamps, update_on_create: true
 
 # Bootstrap a brand-new database only.
 #
-# Migrations are otherwise run by hand (`rake db:migrate`), deliberately: a
-# release-phase migration that fails wedges every future deploy. But a totally
-# empty database is a different case — without this, the very first deploy
-# crashloops on "no such table: users" until someone shells in, which looks
-# like a broken build rather than a missing step.
+# Pending migrations are otherwise applied by the deploy's predeploy hook
+# (`rake db:release`), which runs before this process exists. Deliberately not
+# here: migrating from inside boot means every restart races itself, and a
+# failure crashloops the app instead of failing the deploy. But a totally empty
+# database is a different case — without this, a `dokku run` against a fresh
+# volume dies on "no such table: users" before the hook can do anything.
 #
 # This never applies *pending* migrations to an existing schema. If schema_info
 # exists, it does nothing at all.
