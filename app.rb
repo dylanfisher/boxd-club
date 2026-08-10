@@ -529,6 +529,28 @@ class App < Roda
           r.redirect "/admin/clubs/#{club.slug}"
         end
 
+        # The same thing for the club's list. Creating a list-mode club only
+        # checks the list exists — the films don't arrive until the nightly
+        # fetch finds the club stale, which leaves a new club with nothing to
+        # put on a ballot until the morning. This is the way to skip that wait,
+        # and to pick up an edited list without waiting out REFRESH_AFTER.
+        #
+        # On a thread for the same reason as the watchlist above: a long list
+        # is a request per page, at interactive pace.
+        r.post "refetch-list" do
+          check_csrf!
+
+          if club.list_mode != "list"
+            flash["error"] = "#{club.name} doesn't draw on a Letterboxd list."
+          elsif club.list_url.nil?
+            flash["error"] = "No list set on this club yet."
+          else
+            Rounds.in_background { Letterboxd.refresh_list!(club) }
+            flash["notice"] = "Reading #{club.list_owner}/#{club.list_slug} — reload in a minute."
+          end
+          r.redirect "/admin/clubs/#{club.slug}"
+        end
+
         # Chases everyone who still owes a ballot. Unlike the automatic
         # reminder this ignores the every-3-days throttle, so pressing it twice
         # really does send twice.

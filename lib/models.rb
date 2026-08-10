@@ -106,6 +106,15 @@ class Club < Sequel::Model
   def list_url = list_owner && list_slug ? "https://letterboxd.com/#{list_owner}/list/#{list_slug}/" : nil
   def path = "/club/#{slug}"
 
+  # The club's copy of its Letterboxd list. Empty and never-read look the same
+  # in a bare count and need different fixes — one is a private or emptied
+  # list, the other a club created since the last fetch — so expose both.
+  def list_size = DB[:club_list_entries].where(club_id: id).count
+
+  def list_fetched_at
+    DB[:club_list_entries].where(club_id: id).order(Sequel.desc(:fetched_at)).get(:fetched_at)
+  end
+
   def watched_rounds = rounds_dataset.where(state: "watched").order(Sequel.desc(:watched_at))
 
   # A club with no round yet has nothing to wait on — "the next round starts

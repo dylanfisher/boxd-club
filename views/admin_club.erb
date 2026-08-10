@@ -50,6 +50,31 @@
   </div>
 </section>
 
+<%# Only list-mode clubs have a list to read. The count is what the matcher
+    actually has to work with, so a fresh club reading "0 films, never read"
+    explains an empty ballot before anyone has to go looking. %>
+<% if club.list_mode == "list" && club.list_url %>
+  <section class="section">
+    <div class="card">
+      <form method="post" action="/admin/clubs/<%= club.slug %>/refetch-list">
+        <%== csrf_tag("/admin/clubs/#{club.slug}/refetch-list") %>
+        <label>The club's list</label>
+        <p class="dim">
+          <a href="<%= club.list_url %>" target="letterboxd"><%= club.list_owner %>/<%= club.list_slug %></a> ·
+          <%= club.list_size %> films ·
+          <% fetched = club.list_fetched_at %>
+          <%= fetched ? "read #{Fmt.ago(fetched)}" : "never read" %>
+        </p>
+        <button type="submit">Re-read list</button>
+        <p class="dim">
+          Otherwise it's re-read by the nightly job, once it's more than
+          <%= Letterboxd::REFRESH_AFTER / 86_400 %> days old.
+        </p>
+      </form>
+    </div>
+  </section>
+<% end %>
+
 <section class="section">
   <h2>Members</h2>
   <ul class="films">
@@ -143,12 +168,12 @@
           Nudge <%= waiting.size %> <%= waiting.size == 1 ? "person" : "people" %> who haven't voted
         <% end %>
       </button>
-      <span class="dim">
+      <p class="dim">
         <% if waiting.any? %>
           <%= waiting.map(&:display_name).join(", ") %>.
         <% end %>
         Sends straight away, ignoring the every-<%= Rounds::NUDGE_DAYS %>-days limit on automatic reminders.
-      </span>
+      </p>
     </form>
 
     <hr>
