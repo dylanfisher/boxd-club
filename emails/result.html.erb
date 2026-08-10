@@ -1,5 +1,5 @@
 <p class="eyebrow" style="color:#8b9aa8;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px"><%= round.label %></p>
-<p style="color:#d8e0e8"><% if random %>Nobody voted, so <strong><%= club.name %></strong> picked at random:<% else %>The votes are in for <strong><%= club.name %></strong>.<% end %></p>
+<p style="color:#d8e0e8;margin:0 0 24px"><% if random %>Nobody voted, so <strong><%= club.name %></strong> picked at random:<% else %>The votes are in for <strong><%= club.name %></strong>.<% end %></p>
 <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="film">
   <tr>
     <% if film.poster_url %>
@@ -19,10 +19,10 @@
   <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="standings">
     <% standings.each_with_index do |s, i| %>
       <tr>
-        <td class="rank" style="color:#8b9aa8;font-size:14px;padding:0 8px 4px 0;vertical-align:top"><%= i + 1 %>.</td>
+        <td class="rank" style="color:#8b9aa8;font-size:14px;padding:0 8px 8px 0;vertical-align:top"><%= i + 1 %>.</td>
         <%# Film#display, not the bare title: every film reference carries
             director and rating, runners-up included. %>
-        <td class="meta" style="color:#8b9aa8;font-size:14px;padding:0 0 4px"><%= s[:film].display %> — <%= s[:points] %> pts<%= s[:firsts] > 0 ? ", #{s[:firsts]} first-place" : "" %></td>
+        <td class="meta" style="color:#8b9aa8;font-size:14px;padding:0 0 8px"><%= s[:film].display %> — <%= s[:points] %> pts<%= s[:firsts] > 0 ? ", #{s[:firsts]} first-place" : "" %></td>
       </tr>
     <% end %>
   </table>

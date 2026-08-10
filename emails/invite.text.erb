@@ -1,14 +1,27 @@
 You've been invited to <%= club ? club.name : "Boxd Club" %>.
 
-Here's how it works. We read everyone's public Letterboxd watchlist, put the
-films the most of us already want to see on a ballot, and you rank them. There's
-no deadline — the round closes when everyone has voted. Then you watch the
-winner and log it on Letterboxd, and the next round opens once everyone has.
+Boxd Club is a small private movie club that picks what its members watch next
+by vote, off their Letterboxd accounts.
+
+<% if club -%>
+<%= Mailer.wrap("#{club.mode_invite_note} You rank it, there's no deadline, and the round closes once everyone has voted. Then you all watch the winner and log it on Letterboxd, and the next round opens.") %>
+<% else -%>
+Each round we put a handful of films on a ballot and you rank them. There's no
+deadline — the round closes once everyone has voted. Then you all watch the
+winner and log it on Letterboxd, and the next round opens.
+<% end -%>
 
 Set yourself up here:
 <%= verify_url %>
 
+<% if club.nil? || club.watchlist_mode? -%>
 You'll need a public Letterboxd watchlist.
+<% else -%>
+You'll need a Letterboxd account, so we can tell when you've watched the film.
+<% end -%>
 
 --
+Boxd Club is an independent fan project. It isn't affiliated with, or endorsed
+by, Letterboxd.
+
 Not interested? <%= unsub_url %>

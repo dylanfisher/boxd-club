@@ -1,3 +1,19 @@
-<p class="first" style="color:#d8e0e8">Here's your way in<% if club %> to <strong><%= club.name %></strong><% end %>. No password, just this link:</p>
+<%# The body of the message only — emails/layout.html.erb wraps it. Colours are
+    inline as well as in the layout's stylesheet, for the clients that drop a
+    <style> block.
+
+    Two messages share this template. With a club it's an invitation: somebody
+    already set up has been added to a club, so it has to say what that club is
+    and what the site does before it asks for a click. Without one it's the
+    /login form's own sign-in link, which the reader asked for seconds ago and
+    wants nothing but the link. %>
+<% if club -%>
+<p class="first" style="color:#d8e0e8">You've been added to <strong><%= club.name %></strong> on Boxd Club — a small private movie club that picks what its members watch next by vote.</p>
+<p style="color:#d8e0e8"><%= club.mode_invite_note %> You rank it, there's no deadline, and the round closes once everyone has voted. Then you all watch the winner and log it on Letterboxd, and the next round opens.</p>
+<p style="color:#d8e0e8">You already have an account, so there's nothing to set up:</p>
+<%= Mailer.button(login_url, "Open #{club.name}") %>
+<% else -%>
+<p class="first" style="color:#d8e0e8">Here's your way in. No password, just this link:</p>
 <%= Mailer.button(login_url, "Sign in") %>
+<% end -%>
 <p class="meta last" style="color:#8b9aa8;font-size:14px">It keeps working for a couple of months, so you can open it again later. If you didn't ask for it, ignore it — it only signs in <%= user.email %>.</p>

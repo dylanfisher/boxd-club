@@ -64,7 +64,7 @@ module Invites
     url = Tokens.login_url(user, club ? club.path : "/")
     Mailer.deliver(
       to: user.email, user: user,
-      subject: club ? "Your link to #{club.name}" : "Your Boxd Club sign-in link",
+      subject: club ? "You've been added to #{club.name}" : "Your Boxd Club sign-in link",
       template: "login",
       club: club, login_url: url
     )

@@ -14,7 +14,7 @@ module EmailPreviews
   # chased, told the result. Each variant exists because it renders a branch
   # the plain one doesn't.
   NAMES = %w[
-    invite invite-general
+    invite invite-general invite-list
     login login-club
     ballot ballot-stale
     nudge
@@ -68,6 +68,10 @@ module EmailPreviews
     when "invite"
       preview(name, "invite", "You're invited to #{club.name}",
               "An invite to a club", club: club, verify_url: url("/verify"))
+    when "invite-list"
+      preview(name, "invite", "You're invited to #{list_club.name}",
+              "An invite to a club drawing from a fixed list", club: list_club,
+              verify_url: url("/verify"))
     when "invite-general"
       preview(name, "invite", "You're invited to Boxd Club",
               "An invite with no club yet", club: nil, verify_url: url("/verify"))
@@ -75,8 +79,8 @@ module EmailPreviews
       preview(name, "login", "Your Boxd Club sign-in link",
               "The /login form", club: nil, login_url: url("/auth"))
     when "login-club"
-      preview(name, "login", "Your link to #{club.name}",
-              "A sign-in link aimed at a club", club: club, login_url: url("/auth"))
+      preview(name, "login", "You've been added to #{club.name}",
+              "An existing member added to a club", club: club, login_url: url("/auth"))
     when "ballot"
       preview(name, "ballot", "#{club.name} #{round.label.downcase} — rank these #{FILMS.size}",
               "A new round, sent to everyone", **ballot_locals)
@@ -122,7 +126,13 @@ module EmailPreviews
   end
 
   def user = User.new(email: "you@example.com", letterboxd_username: "you")
-  def club = Club.new(name: "Thursday Club", slug: "thursday-club")
+  def club = Club.new(name: "Thursday Club", slug: "thursday-club", list_mode: "own")
+
+  # The one mode that doesn't read anybody's watchlist, so the invite asks for
+  # something different.
+  def list_club = Club.new(name: "Letterboxd's Top 500 Films", slug: "top-500",
+                           list_mode: "list", list_owner: "dave",
+                           list_slug: "official-top-250-narrative-feature-films")
   def round = Round.new(number: 7, state: "open")
 
   # What Round#candidate_films returns: [candidate, film] pairs, in ballot order.

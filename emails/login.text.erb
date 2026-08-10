@@ -1,6 +1,22 @@
-Here's your way in<%= club ? " to #{club.name}" : "" %>. No password, just this link:
+<% if club -%>
+You've been added to <%= club.name %> on Boxd Club — a small private movie club
+that picks what its members watch next by vote.
+
+<%= Mailer.wrap("#{club.mode_invite_note} You rank it, there's no deadline, and the round closes once everyone has voted. Then you all watch the winner and log it on Letterboxd, and the next round opens.") %>
+
+You already have an account, so there's nothing to set up. No password, just
+this link:
 
 <%= login_url %>
+<% else -%>
+Here's your way in. No password, just this link:
+
+<%= login_url %>
+<% end -%>
 
 It keeps working for a couple of months, so you can open it again later.
 If you didn't ask for it, ignore it — it only signs in <%= user.email %>.
+
+--
+Boxd Club is an independent fan project. It isn't affiliated with, or endorsed
+by, Letterboxd.

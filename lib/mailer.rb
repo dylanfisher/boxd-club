@@ -145,6 +145,18 @@ module Mailer
     HTML
   end
 
+  # Hard-wraps a paragraph for a text part. The templates are wrapped by hand,
+  # which a sentence pulled out of the database can't be — and a client that
+  # doesn't reflow shows one 200-character line running off the side.
+  def wrap(text, width = 76)
+    text.to_s.split(/\s+/).each_with_object([""]) do |word, lines|
+      if lines.last.empty? then lines[-1] = word
+      elsif lines.last.length + 1 + word.length <= width then lines[-1] += " #{word}"
+      else lines << word
+      end
+    end.join("\n")
+  end
+
   def render(name, **locals)
     path = File.join(TEMPLATE_DIR, name)
     ERB.new(File.read(path), trim_mode: "-").result_with_hash(locals)

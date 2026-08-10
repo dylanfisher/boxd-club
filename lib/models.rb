@@ -87,6 +87,21 @@ class Club < Sequel::Model
   # Shown next to the mode wherever a member (not just an admin) sees it.
   MODE_ICONS = { "own" => "◍", "cross" => "◎", "union" => "◌", "list" => "▤" }.freeze
 
+  # One sentence, addressed to the member, saying where their ballot comes
+  # from. MODE_NOTES is written for whoever is choosing a mode and says what
+  # the mode is good and bad at; this is for somebody who has just been added
+  # to a club and only needs to know what will land in their inbox.
+  MODE_INVITE_NOTES = {
+    "own" => "Each round we read everyone's public Letterboxd watchlist and put " \
+             "the films the most of you already want to see on the ballot.",
+    "cross" => "Each round's ballot is the strict overlap of everyone's public " \
+               "Letterboxd watchlists — only films every one of you already wants.",
+    "union" => "Each round's ballot is drawn at random from every film on any " \
+               "member's public Letterboxd watchlist.",
+    "list" => "Each round's ballot is drawn at random from one public Letterboxd " \
+              "list, skipping anything the club has already watched."
+  }.freeze
+
   one_to_many :memberships
   one_to_many :rounds, order: Sequel.desc(:opened_at)
   many_to_many :users, join_table: :memberships
@@ -103,6 +118,10 @@ class Club < Sequel::Model
   def mode_label = MODE_LABELS.fetch(list_mode, list_mode)
   def mode_note = MODE_NOTES.fetch(list_mode, "")
   def mode_icon = MODE_ICONS.fetch(list_mode, "◍")
+  def mode_invite_note = MODE_INVITE_NOTES.fetch(list_mode, MODE_INVITE_NOTES["own"])
+  # Whether a member needs a public watchlist of their own to take part: in
+  # list mode the films come from the club's list, so they don't.
+  def watchlist_mode? = list_mode != "list"
   def list_url = list_owner && list_slug ? "https://letterboxd.com/#{list_owner}/list/#{list_slug}/" : nil
   def path = "/club/#{slug}"
 

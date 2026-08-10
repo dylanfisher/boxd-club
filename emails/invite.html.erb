@@ -1,7 +1,15 @@
 <%# The body of the message only — emails/layout.html.erb wraps it. Colours are
     inline as well as in the layout's stylesheet, for the clients that drop a
-    <style> block. %>
+    <style> block.
+
+    This goes to somebody who has never heard of the site, so it says what Boxd
+    Club is before it says how this particular club picks its films. %>
 <p class="first" style="color:#d8e0e8">You've been invited to <strong><%= club ? club.name : "Boxd Club" %></strong>.</p>
-<p style="color:#d8e0e8">We read everyone's public Letterboxd watchlist, put the films the most of us already want to see on a ballot, and you rank them. There's no deadline — the round closes when everyone has voted. Then you watch the winner and log it on Letterboxd, and the next round opens once everyone has.</p>
+<p style="color:#d8e0e8">Boxd Club is a small private movie club that picks what its members watch next by vote, off their Letterboxd accounts.</p>
+<% if club -%>
+<p style="color:#d8e0e8"><%= club.mode_invite_note %> You rank it, there's no deadline, and the round closes once everyone has voted. Then you all watch the winner and log it on Letterboxd, and the next round opens.</p>
+<% else -%>
+<p style="color:#d8e0e8">Each round we put a handful of films on a ballot and you rank them. There's no deadline — the round closes once everyone has voted. Then you all watch the winner and log it on Letterboxd, and the next round opens.</p>
+<% end -%>
 <%= Mailer.button(verify_url, "Set yourself up") %>
-<p class="meta last" style="color:#8b9aa8;font-size:14px">You'll need a public Letterboxd watchlist.</p>
+<p class="meta last" style="color:#8b9aa8;font-size:14px"><% if club.nil? || club.watchlist_mode? %>You'll need a public Letterboxd watchlist.<% else %>You'll need a Letterboxd account, so we can tell when you've watched the film.<% end %></p>
