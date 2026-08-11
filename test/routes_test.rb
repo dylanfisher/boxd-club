@@ -548,6 +548,50 @@ end
     refute_includes last_response.body, "on watchlist"
   end
 
+  # A list club's members are the filter on its list, so the club page says how
+  # much of the list they've used up. A watchlist club has no list to count.
+  def test_a_list_clubs_member_list_shows_whats_left_of_the_list
+    sign_in(@member)
+    listed = films(3)
+    list_club = club(name: "Top", mode: "list", members: [@member],
+                     list_owner: "dave", list_slug: "top")
+    club_list(list_club, listed)
+    Seen.record_seen!(@member.id, [listed.first.id])
+
+    get list_club.path
+    assert_includes last_response.body, "2 films left to draw from"
+    assert_includes last_response.body, "1 watched"
+
+    get @club.path
+    refute_includes last_response.body, "films left to draw from"
+  end
+
+  # The same block on a watchlist club counts the other direction: the pool is
+  # what the members have put on their own watchlists.
+  def test_a_watchlist_clubs_member_list_counts_the_watchlists_it_draws_on
+    sign_in(@member)
+
+    get @club.path
+
+    # Four films, both members have all of them (see setup).
+    assert_includes last_response.body, "4 films on our watchlists"
+    assert_includes last_response.body, "are on more than one"
+    assert_includes last_response.body, "4 on watchlist"
+  end
+
+  # Cross mode draws from the intersection, so that's the number it names — and
+  # the intersection is over the watchlists that exist, the same as the matcher.
+  def test_a_cross_clubs_member_list_counts_the_overlap_it_draws_from
+    sign_in(@member)
+    cross = club(name: "Both", mode: "cross", members: [@member, @other])
+    watchlist(@member, [film]) # one film only one of them wants
+
+    get cross.path
+
+    assert_includes last_response.body, "4 films to draw from"
+    assert_includes last_response.body, "out of 5 between us"
+  end
+
   def test_an_admin_can_reset_a_club_by_typing_its_slug
     sign_in(user(admin: true))
     Rounds.open!(@club)

@@ -415,9 +415,55 @@
 
 <section class="section">
   <h2><%= club.members.size %> <%= club.members.size == 1 ? "member" : "members" %></h2>
+  <%# Where the ballot's films come from, in the same shape whichever mode the
+      club is in — it's the answer to "why do we keep getting the same five
+      films?", and on a list club it's also the club's progress through its
+      list. Each mode names the pool it actually draws on: the list minus what
+      anybody here has seen, the overlap between watchlists, or all of them at
+      once. %>
+  <% if pool[:kind] == :list && pool[:size].positive? %>
+    <p class="dim pool">
+      <%= Fmt.number(pool[:size] - pool[:watched]) %> films left to draw from —
+      <%= Fmt.number(pool[:watched]) %> of the
+      <%= Fmt.number(pool[:size]) %> on the list
+      <%= pool[:watched] == 1 ? "has" : "have" %> been watched by someone here.
+    </p>
+  <% elsif pool[:kind] == :watchlist && pool[:union].positive? %>
+    <p class="dim pool">
+      <% if club.list_mode == "cross" %>
+        <%= Fmt.number(pool[:everyones]) %> films to draw from —
+        what all <%= pool[:contributing] %> of our watchlists have in common,
+        out of <%= Fmt.number(pool[:union]) %> between us.
+      <% elsif club.list_mode == "union" %>
+        <%= Fmt.number(pool[:union]) %> films to draw from — everything on
+        any of our watchlists.
+      <% elsif pool[:shared].zero? %>
+        <%# 'own' backfills from single picks, so a club with no overlap at all
+            still gets ballots — out of everything, one person's choice at a
+            time. %>
+        <%= Fmt.number(pool[:union]) %> films on our watchlists, none of them on
+        more than one — until that changes, a ballot is single picks.
+      <% else %>
+        <%= Fmt.number(pool[:union]) %> films on our watchlists —
+        <%= Fmt.number(pool[:shared]) %> of them
+        <%= pool[:shared] == 1 ? "is" : "are" %> on more than one, which is what
+        a ballot reaches for first.
+      <% end %>
+    </p>
+  <% end %>
   <ul class="people">
     <% club.members.each do |m| %>
-      <li><%== render("member", locals: { user: m }) %></li>
+      <li>
+        <%== render("member", locals: { user: m }) %>
+        <%# A member's share of the pool, which is the opposite thing in each
+            case: on a list club what they've already used up, on a watchlist
+            club what they've put in. %>
+        <% if pool[:kind] == :list %>
+          <span class="watched"><%= Fmt.number(pool[:per_member].fetch(m.id, 0)) %> watched</span>
+        <% else %>
+          <span class="watched"><%= Fmt.number(pool[:per_member].fetch(m.id, 0)) %> on watchlist</span>
+        <% end %>
+      </li>
     <% end %>
   </ul>
 </section>

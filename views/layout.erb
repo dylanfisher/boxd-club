@@ -298,6 +298,16 @@
     display: flex; align-items: center; gap: var(--space-2);
     padding: .2rem .8rem .2rem .25rem; text-decoration: none; color: inherit;
   }
+  /* Where the club's films come from, above its member chips. The chips are
+     tall, so the .section p + .people gap alone reads as cramped. */
+  .pool { margin-bottom: var(--space-3); }
+  /* This member's share of that pool, tucked into the chip after their name.
+     Its own element rather than part of the link, so it isn't underlined with
+     the name on hover. */
+  .people .watched {
+    display: flex; align-items: center; padding-right: .8rem;
+    color: var(--dim); font-size: .8rem;
+  }
   .people .member-name {
     font-family: var(--sans); font-weight: 700; font-size: 13px;
     color: rgb(170, 187, 204);

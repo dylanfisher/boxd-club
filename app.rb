@@ -673,8 +673,61 @@ class App < Roda
            candidates: ordered, voted: !existing.empty?,
            standings: round&.decided? ? Votes.standings(round) : [],
            history: club.past_rounds.limit(10).all,
+           pool: club_pool(club),
            ballot_error: ballot_error
          })
+  end
+
+  # What the club's ballots are drawn from, and each member's share of it — the
+  # numbers under the member list. Which numbers those are follows the mode: a
+  # list club draws from its list, minus everything somebody here has already
+  # watched, so a member's share is what they've seen of it; the other three
+  # draw from the members' own watchlists, where a member's share is the size
+  # of theirs.
+  def club_pool(club)
+    ids = club.members.map(&:id)
+    return watchlist_pool(club, ids) unless club.list_mode == "list"
+
+    { kind: :list, size: club.list_size,
+      watched: Seen.watched_on_list_count(club, ids),
+      per_member: Seen.watched_on_list_counts(club, ids) }
+  end
+
+  # The watchlist modes. `union` is every film on anybody's watchlist, which is
+  # the whole pool; `shared` is the part of it more than one person wants, which
+  # is what 'own' puts on a ballot before it backfills; `everyones` is the strict
+  # intersection 'cross' is limited to. Each mode's sentence in the view picks
+  # the one it actually draws on.
+  #
+  # All three come out of one histogram of "how many members have this film",
+  # rather than three queries over a table that runs to thousands of rows a
+  # member. `contributing` is the members with a watchlist at all — the same
+  # count Matcher.cross intersects over, so an unfetched member doesn't make
+  # this claim an intersection of zero.
+  def watchlist_pool(club, ids)
+    counts = watchlist_histogram(ids)
+    contributing = DB[:watchlist_entries].where(user_id: ids).distinct.select_map(:user_id).size
+    { kind: :watchlist, mode: club.list_mode,
+      union: counts.values.sum,
+      shared: counts.reject { |n, _| n < Matcher::MIN_MATCHES }.values.sum,
+      everyones: contributing.positive? ? counts.fetch(contributing, 0) : 0,
+      contributing: contributing,
+      per_member: DB[:watchlist_entries].where(user_id: ids).group(:user_id)
+                    .select { [user_id, count(film_id).as(:films)] }.to_hash(:user_id, :films) }
+  end
+
+  # how many members have it => how many films that's true of.
+  def watchlist_histogram(ids)
+    return {} if ids.empty?
+
+    DB[:watchlist_entries]
+      .where(user_id: ids)
+      .group(:film_id)
+      .select { count(user_id).as(:members) }
+      .from_self
+      .group(:members)
+      .select { [members, Sequel.lit("COUNT(*)").as(:films)] }
+      .to_hash(:members, :films)
   end
 
   def admin_club(club)
