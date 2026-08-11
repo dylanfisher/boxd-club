@@ -471,11 +471,22 @@ class RoundsTest < BoxdTest
     watchlist(fresh_user, [@films.first])
 
     assert_equal [stale_user.letterboxd_username],
-                 Rounds.stale_usernames([stale_user, fresh_user])
+                 Rounds.stale_usernames(@club, [stale_user, fresh_user])
   end
 
   def test_a_member_with_no_letterboxd_account_is_not_called_stale
-    assert_empty Rounds.stale_usernames([user(username: nil)])
+    assert_empty Rounds.stale_usernames(@club, [user(username: nil)])
+  end
+
+  # A list club never reads a watchlist, so watchlist freshness said nothing
+  # about its ballot — and called every member stale on every one of them.
+  def test_a_list_club_calls_out_members_whose_watch_history_we_dont_have
+    known = user
+    unknown = user
+    list = club(mode: "list", members: [known, unknown], list_owner: "dave", list_slug: "top-500")
+    Seen.record_seen!(known.id, [film.id])
+
+    assert_equal [unknown.letterboxd_username], Rounds.stale_usernames(list, [known, unknown])
   end
 
   private

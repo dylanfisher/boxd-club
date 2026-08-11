@@ -16,7 +16,7 @@ module EmailPreviews
   NAMES = %w[
     invite invite-general invite-list
     login login-club
-    ballot ballot-stale
+    ballot ballot-stale ballot-list
     nudge
     result result-random
   ].freeze
@@ -88,6 +88,11 @@ module EmailPreviews
       preview(name, "ballot", "#{club.name} #{round.label.downcase} — rank these #{FILMS.size}",
               "A ballot built on watchlists we couldn't refresh",
               **ballot_locals, stale: %w[alice bob])
+    when "ballot-list"
+      preview(name, "ballot", "#{list_club.name} #{round.label.downcase} — rank these #{FILMS.size}",
+              "A ballot drawn from a fixed list, with a history we haven't read",
+              **ballot_locals, club: list_club, candidates: list_candidates,
+              stale: %w[alice])
     when "nudge"
       preview(name, "nudge",
               "#{club.name} — still waiting on your ballot (#{round.label.downcase})",
@@ -140,6 +145,12 @@ module EmailPreviews
     films.each_with_index.map do |film, i|
       [Candidate.new(position: i + 1, match_count: MATCH_COUNTS[i]), film]
     end
+  end
+
+  # A list club's candidates, which carry no match count: the films come from
+  # the club's list, not from anybody having asked for them.
+  def list_candidates
+    films.each_with_index.map { |film, i| [Candidate.new(position: i + 1, match_count: 0), film] }
   end
 
   # What Votes.standings returns, highest first.

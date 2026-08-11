@@ -416,8 +416,17 @@ module Rounds
     end
   end
 
-  def stale_usernames(members)
+  # Members whose data the ballot leans on but we haven't read lately — the
+  # caveat at the foot of the ballot email.
+  #
+  # Which data that is depends on the mode. The three watchlist modes build a
+  # ballot out of watchlists; a list club builds one out of its list, minus
+  # what people have already watched, and never fetches a watchlist at all —
+  # so asking about watchlist freshness there called every member stale on
+  # every ballot.
+  def stale_usernames(club, members)
     return [] if members.empty?
+    return unknown_history_usernames(members) unless club.watchlist_mode?
 
     cutoff = Time.now - (STALE_DAYS * 86_400)
     # Compared in SQL: SQLite's max() aggregate returns an untyped string, so
@@ -430,9 +439,21 @@ module Rounds
     members.select(&:linked?).reject { |u| fresh.include?(u.id) }.map(&:letterboxd_username)
   end
 
+  # List mode's equivalent: members we have no watch history for at all, so
+  # nothing they've seen was filtered out of their ballot. Nothing ever writes
+  # a "no" (see lib/seen.rb), so an empty record is the only signal there is.
+  def unknown_history_usernames(members)
+    linked = members.select(&:linked?)
+    return [] if linked.empty?
+
+    known = DB[:seen_checks].where(user_id: linked.map(&:id), seen: true)
+                            .distinct.select_map(:user_id)
+    linked.reject { |u| known.include?(u.id) }.map(&:letterboxd_username)
+  end
+
   def send_ballots!(round, members)
     club = round.club
-    stale = stale_usernames(members)
+    stale = stale_usernames(club, members)
     candidates = round.candidate_films
 
     members.each do |user|

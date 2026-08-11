@@ -1,10 +1,13 @@
 <%= club.name %>, <%= round.label.downcase %>
 <%= "=" * (club.name.length + round.label.length + 2) %>
 
+<% if club.watchlist_mode? -%>
 <%= candidates.size %> films, picked from what <%= member_count %> of us have on our watchlists.
-
+<% else -%>
+<%= candidates.size %> films from the club's list that none of the <%= member_count %> of us have watched.
+<% end %>
 <% candidates.each_with_index do |(cand, film), i| -%>
-  <%= i + 1 %>. <%= film.display %> — <%= cand.match_count %> of us want it
+  <%= i + 1 %>. <%= film.display %><% if club.watchlist_mode? %> — <%= cand.match_count %> of us want it<% end %>
 <% end -%>
 
 Rank them here:
@@ -14,7 +17,12 @@ There's no deadline. The round stays open until everyone has voted, and the
 film with the most points wins the moment the last ballot lands.
 <% unless stale.empty? -%>
 
+<% if club.watchlist_mode? -%>
 Heads up: we couldn't refresh <%= stale.join(", ") %>'s watchlist recently, so this ballot may be out of date.
+<% else -%>
+Heads up: we don't know yet what <%= stale.join(", ") %> <%= stale.size == 1 ? "has" : "have" %> watched,
+so this ballot may include films they've already seen.
+<% end -%>
 <% end -%>
 
 --

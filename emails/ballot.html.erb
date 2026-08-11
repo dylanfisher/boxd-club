@@ -1,5 +1,9 @@
 <p class="eyebrow" style="color:#8b9aa8;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px"><%= round.label %></p>
-<p style="color:#d8e0e8;margin:0 0 24px"><strong><%= club.name %></strong> — <%= candidates.size %> films, picked from what <%= member_count %> of us have on our watchlists.</p>
+<%# Where the ballot came from, which is not the same sentence in every mode:
+    a watchlist club's films are ones people put on a list themselves, a list
+    club's are drawn from its Letterboxd list and filtered by what we know
+    people have already watched. %>
+<p style="color:#d8e0e8;margin:0 0 24px"><strong><%= club.name %></strong> — <% if club.watchlist_mode? %><%= candidates.size %> films, picked from what <%= member_count %> of us have on our watchlists.<% else %><%= candidates.size %> films from <% if club.list_url %><a href="<%= club.list_url %>" class="title-link" style="color:#d8e0e8">the club's list</a><% else %>the club's list<% end %> that none of the <%= member_count %> of us have watched.<% end %></p>
 <%# One row per film: rank, poster, then the title and its meta line. A table
     rather than a list because Outlook won't put a list marker beside an image. %>
 <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="film">
@@ -15,8 +19,11 @@
         <a href="<%= film.letterboxd_url %>" class="title-link" style="color:#d8e0e8;text-decoration:none;font-weight:bold"><%= film.title %></a><% if film.year %>
           <span class="meta" style="color:#8b9aa8"><%= film.year %></span><% end %><br>
         <span class="meta" style="color:#8b9aa8;font-size:14px">
-          <% if film.director %>dir. <%= film.director %><% end %><% if film.rating %> · ★ <%= film.rating_display %><% end %>
-          · <%= cand.match_count %> of us want it
+          <% if film.director %>dir. <%= film.director %><% end %><% if film.rating %> · ★ <%= film.rating_display %><% end %><%#
+            A list club's candidates carry no match count — the films come from
+            the list, not from anybody wanting them — so "0 of us want it" was
+            the only thing this could say there. %><% if club.watchlist_mode? %>
+          · <%= cand.match_count %> of us want it<% end %>
         </span>
       </td>
     </tr>
@@ -25,5 +32,5 @@
 <%= Mailer.button(club_url, "Rank them") %>
 <p class="meta<%= stale.empty? ? " last" : "" %>" style="color:#8b9aa8;font-size:14px">No deadline: the round stays open until everyone has voted, and the winner is decided the moment the last ballot lands.</p>
 <% unless stale.empty? %>
-  <p class="warn last" style="color:#e0a020;font-size:14px">Heads up: we couldn't refresh <%= stale.join(", ") %>'s watchlist recently, so this ballot may be out of date.</p>
+  <p class="warn last" style="color:#e0a020;font-size:14px"><% if club.watchlist_mode? %>Heads up: we couldn't refresh <%= stale.join(", ") %>'s watchlist recently, so this ballot may be out of date.<% else %>Heads up: we don't know yet what <%= stale.join(", ") %> <%= stale.size == 1 ? "has" : "have" %> watched, so this ballot may include films they've already seen.<% end %></p>
 <% end %>
