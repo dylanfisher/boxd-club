@@ -24,6 +24,19 @@ module Rounds
   # Watchlist data older than this is called out on the ballot.
   STALE_DAYS = 8
 
+  # Gap between one member's feed and the next when nobody is watching.
+  #
+  # Letterboxd::PACE[:background] is the gap between pages of one walk, and
+  # that's what this used to borrow — but a log check isn't a walk. It's one
+  # request per member, so there's nothing to get through quickly and no reason
+  # to look like a crawl arriving in a burst every four hours.
+  #
+  # Minutes rather than Letterboxd::MEMBER_STAGGER's tens of minutes, because
+  # this job comes round six times a night and every club's pending members
+  # have to fit inside one pass: at this spacing a hundred of them still finish
+  # in under three hours, and a club of eight takes about a quarter of an hour.
+  LOG_CHECK_STAGGER = 45.0..180.0
+
   module_function
 
   # Builds a round from cached watchlist data and emails the ballots.
@@ -180,9 +193,10 @@ module Rounds
     end
   end
 
-  # Asks Letterboxd who has logged the winner yet. One or two requests per
-  # member who hasn't been seen logging it, so this shrinks as people watch it —
-  # and once somebody is recorded we never ask about them again.
+  # Asks Letterboxd who has logged the winner yet. One request per member who
+  # hasn't been seen logging it, so this shrinks as people watch it — and once
+  # somebody is recorded we never ask about them again. Unattended, those
+  # requests are spread out at LOG_CHECK_STAGGER rather than made back to back.
   def check_logs!(round, pace: :interactive, deliver: :now)
     film = Film[round.winning_film_id]
     return nil if film.nil?
@@ -199,8 +213,17 @@ module Rounds
 
     # Shuffled and spaced, so a club of eight doesn't arrive as eight requests
     # in the same second in the same member order every four hours.
+    #
+    # An unattended run waits before the *first* request too: advance_all!
+    # walks every club in one sweep, and without this the next club's first
+    # check lands the instant the last one's finished — the gap between members
+    # is worth nothing if it doesn't also fall between clubs. An admin pressing
+    # a button gets the brisk pace and no opening wait, as everywhere else.
+    background = pace == :background
+    gap = background ? LOG_CHECK_STAGGER : Letterboxd::PACE.fetch(pace)
+
     pending.shuffle.each_with_index do |user, i|
-      Letterboxd.pause(Letterboxd::PACE.fetch(pace)) if i.positive?
+      Letterboxd.pause(gap) if background || i.positive?
       next unless watched?(user, film)
 
       DB[:watch_logs].insert_conflict.insert(
