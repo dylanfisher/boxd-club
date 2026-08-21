@@ -6,10 +6,12 @@
 # collectively seen four times over.
 #
 # Letterboxd won't hand over a watch history in bulk, so this is filled from the
-# two sources that do answer: an uploaded watched.csv, which is the whole
-# history at once, and the member's RSS feed, which the nightly fetch reads for
-# whatever they've logged since (Letterboxd.refresh_watched!). Both are lists of
-# films somebody has watched.
+# three sources that do answer: an uploaded watched.csv, which is the whole
+# history at once, and then two pages the nightly fetch reads every run
+# (Letterboxd.refresh_watched!) — the member's RSS feed, for whatever they've
+# logged since, and page 1 of their films page, which is the only one of the
+# three that catches a film they rated without ever logging. All three are lists
+# of films somebody has watched.
 #
 # So every row here is a yes. Nothing writes a no — there's no route that can
 # tell us a member *hasn't* watched something, only ones that list what they

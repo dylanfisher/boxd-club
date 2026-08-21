@@ -194,7 +194,7 @@
         <%== csrf_tag("/admin/clubs/#{club.slug}/round/#{action}") %>
         <button class="secondary" type="submit">
           <%= { "open" => "Open a round now", "tally" => "Tally now",
-                "check" => "Re-check who's logged it", "watched" => "Mark watched, start next" }[action] %>
+                "check" => "Re-check who's watched it", "watched" => "Mark watched, start next" }[action] %>
         </button>
       </form>
     <% end %>

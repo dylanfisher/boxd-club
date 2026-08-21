@@ -332,12 +332,13 @@
       <h3>Mark as Watched</h3>
       <% if log %>
         <p class="dim">
-          <%= log[:manual] ? "You've marked this one watched." : "Letterboxd shows you've logged it." %>
+          <%= log[:manual] ? "You've marked this one watched." : "Letterboxd shows you've watched it." %>
         </p>
       <% else %>
         <p class="dim">
-          Logging it on Letterboxd is usually picked up here within a few hours.
-          If there's a problem or you already watched it, press this button.
+          Logging or rating it on Letterboxd is usually picked up here within a
+          few hours. If there's a problem or you already watched it, press this
+          button.
         </p>
         <form method="post" action="<%= club.path %>/watched">
           <%== csrf_tag("#{club.path}/watched") %>

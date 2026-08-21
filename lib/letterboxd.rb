@@ -174,14 +174,18 @@ module Letterboxd
   # The films a member has logged most recently, newest first.
   #
   # The RSS feed, because it is the only route Letterboxd leaves open that is
-  # ordered by *when something was logged*. /{user}/films/ looks like the right
-  # page and isn't: it sorts by release date (measured 2026-08-10 — the years
-  # come back perfectly non-increasing on an account with hundreds logged), so
-  # it's a window on new releases and nothing else, returning much the same page
-  # night after night while a member working through a list of classics never
-  # appears in it. Every form of it that would re-sort or paginate — /page/2/,
+  # ordered by *when something was logged*, so it answers whatever the film's
+  # age — which is what a club working through a list of classics needs.
+  #
+  # Not a substitute for `watched_films`, and not substitutable by it. That page
+  # sorts by release date (measured 2026-08-10 — the years come back perfectly
+  # non-increasing on an account with hundreds logged), so it returns much the
+  # same slice night after night while a member watching old films never moves
+  # in it, and every form of it that would re-sort or paginate — /page/2/,
   # /by/date/, /by/entry-rating/, /year/1978/, /films/diary/ — is 403 with
-  # `cf-mitigated: challenge` (re-checked 2026-08-10).
+  # `cf-mitigated: challenge` (re-checked 2026-08-21). What it has that the feed
+  # hasn't is ratings: a film rated and never logged reaches no feed at all.
+  # Both are read, for exactly the half the other misses.
   #
   # About 50 entries, which is weeks of logging for most people — comfortably
   # longer than a round. Entries that aren't films (lists, follows) carry no

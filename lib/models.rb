@@ -254,12 +254,13 @@ class Round < Sequel::Model
   # And everyone who's already in. Who's voted is as much use as who hasn't:
   # if you're the last one left, the club is waiting on you alone.
   def cast_voters = club.voting_members.select { |u| voter_ids.include?(u.id) }
-  # Everyone who still owes a Letterboxd log entry for the winner.
+  # Everyone we haven't yet seen log or rate the winner on Letterboxd.
   def pending_loggers = club.linked_members.reject { |u| logged_user_ids.include?(u.id) }
   # How this member came to be counted as having watched it, or nil for one who
   # hasn't yet. The page says different things for the two: "Letterboxd shows
-  # you've logged it" is worth reading as confirmation, and "you marked this
-  # watched" is worth reading as a reminder of what we're going on.
+  # you've watched it" is worth reading as confirmation, and "you marked this
+  # watched" is worth reading as a reminder of what we're going on. Only manual
+  # or not is recorded — a log and a rating both just mean Letterboxd said so.
   def watch_log(user) = user && DB[:watch_logs].first(round_id: id, user_id: user.id)
 
   # Voting to skip the film this round landed on. See db/migrate/004.
