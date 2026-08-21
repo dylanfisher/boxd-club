@@ -221,8 +221,9 @@ end
     assert_equal 1, Letterboxd.from_csv(csv).size
   end
 
-  # The nightly fetch's whole seen path for a member: one request to their feed,
-  # straight into the cache, films created for anything we hadn't heard of.
+  # The nightly fetch's whole seen path for a member: their feed, straight into
+  # the cache, films created for anything we hadn't heard of. Here with no films
+  # page to be had, so it's the feed's contribution on its own.
   def test_the_nightly_fetch_reads_the_feed_into_the_seen_cache
     member = user(username: "dylan_fisher")
 
@@ -238,12 +239,91 @@ end
     assert_equal 1981, Film.first(slug: "heavy-metal").year
   end
 
-  # A member who has logged nothing has no feed at all. That's not a reason to
-  # take the rest of the night's work down.
+  # The reason the films page is read at all: a rating with no diary entry
+  # behind it never reaches the feed, and this member has nothing but those —
+  # an empty <channel>, and seven films on their profile. Before the films page
+  # they were a member we knew nothing about for as long as they kept rating
+  # without logging.
+  def test_a_member_who_only_rates_is_read_off_their_films_page
+    member = user(username: "omrain")
+
+    count = stub_letterboxd("/films/" => fixture("films_page.html")) do
+      Letterboxd.refresh_watched!(member)
+    end
+
+    assert_equal 3, count
+    assert_equal %w[obsession-2025 still-walking vertigo],
+                 Film.where(id: DB[:seen_checks].where(user_id: member.id).select(:film_id))
+                     .select_map(:slug).sort
+    assert_equal 2008, Film.first(slug: "still-walking").year
+  end
+
+  # Both sources, merged. Vertigo is in both and counts once.
+  def test_the_two_sources_are_merged_on_slug
+    member = user(username: "dylan_fisher")
+
+    count = stub_letterboxd("/rss/" => fixture("rss_feed.xml"),
+                            "/films/" => fixture("films_page.html")) do
+      Letterboxd.refresh_watched!(member)
+    end
+
+    assert_equal 5, count
+    assert_equal %w[heavy-metal new-rose-hotel obsession-2025 still-walking vertigo],
+                 Film.where(id: DB[:seen_checks].where(user_id: member.id).select(:film_id))
+                     .select_map(:slug).sort
+  end
+
+  # The two requests are independent: one of them being refused must not throw
+  # away what the other already answered.
+  def test_a_challenged_films_page_still_banks_the_feed
+    member = user(username: "dylan_fisher")
+
+    count = stub_letterboxd(lambda { |url|
+      raise Letterboxd::RateLimited, "challenge interstitial" if url.include?("/films/")
+
+      fixture("rss_feed.xml")
+    }) { Letterboxd.refresh_watched!(member) }
+
+    assert_equal 3, count
+  end
+
+  def test_a_challenged_feed_still_banks_the_films_page
+    member = user(username: "omrain")
+
+    count = stub_letterboxd(lambda { |url|
+      raise Letterboxd::RateLimited, "challenge interstitial" if url.include?("/rss/")
+
+      fixture("films_page.html")
+    }) { Letterboxd.refresh_watched!(member) }
+
+    assert_equal 3, count
+  end
+
+  # A member who has logged nothing has no feed at all, and a fresh account has
+  # no films page either. That's not a reason to take the rest of the night's
+  # work down.
   def test_a_member_with_no_feed_does_not_stop_the_fetch
     member = user(username: "nobody")
 
     assert_nil stub_letterboxd({}) { Letterboxd.refresh_watched!(member) }
+  end
+
+  # Page 1 is all there is to have — every re-sort and every later page is
+  # challenged — so the pagination block is the only way to know whether we read
+  # a whole history or the first 72 films of one. It changes the log line and
+  # nothing else: a short read is still all yeses.
+  def test_the_films_page_says_whether_it_was_the_whole_history
+    complete = stub_letterboxd("/films/" => fixture("films_page.html")) do
+      Letterboxd.watched_films("omrain")
+    end
+    assert complete[:complete]
+    assert_equal 3, complete[:entries].size
+
+    truncated = stub_letterboxd("/films/" => fixture("films_page_paginated.html")) do
+      Letterboxd.watched_films("davidehrlich")
+    end
+    refute truncated[:complete]
+    assert_equal 3, truncated[:entries].size
   end
 
   # -- uploading a watch history ---------------------------------------------

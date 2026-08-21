@@ -227,13 +227,32 @@ class BoxdTest < Minitest::Test
     stub_recent_logs(usernames.to_h { |u| [u, Film.select_map(:slug)] }, &)
   end
 
-  # The RSS feed, as slugs per username. Anyone not named has logged nothing.
+  # The same, for members who rated the film without ever logging it: their feed
+  # is empty and their films page has it.
+  def stub_rated(usernames, &)
+    stub_recent_logs({}, rated: usernames.to_h { |u| [u, Film.select_map(:slug)] }, &)
+  end
+
+  # Both of a member's watch-history pages, as slugs per username: `by_username`
+  # is the RSS feed, `rated:` is page 1 of /{user}/films/. Anyone not named in
+  # one has nothing in it.
+  #
+  # Both, always, because lib/rounds.rb falls through to the films page whenever
+  # the feed comes back without the film it asked about. A helper that stubbed
+  # only the feed would leave the fallback live, and a test saying "this is what
+  # they logged" would go to Letterboxd to find out what they rated.
+  #
   # Titles don't matter to lib/rounds.rb and every film here already has a row,
   # so the slug stands in for one.
-  def stub_recent_logs(by_username, &)
-    stub_method(Letterboxd, :recent_logs, lambda { |username|
-      by_username.fetch(username, []).map { |slug| { slug: slug, title: slug, year: nil } }
-    }, &)
+  def stub_recent_logs(by_username, rated: {}, &)
+    entries = lambda { |pages, username|
+      pages.fetch(username, []).map { |slug| { slug: slug, title: slug, year: nil } }
+    }
+
+    stub_method(Letterboxd, :recent_logs, ->(username) { entries.call(by_username, username) }) do
+      stub_method(Letterboxd, :watched_films,
+                  ->(username) { { entries: entries.call(rated, username), complete: true } }, &)
+    end
   end
 
   def fixture(name) = File.read(File.join(__dir__, "fixtures", name))

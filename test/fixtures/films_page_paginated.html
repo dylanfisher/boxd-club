@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Page 1 of /{user}/films/, cut down to what lib/letterboxd.rb reads: the same
+  LazyPoster components a watchlist carries, plus the pagination block that says
+  whether page 1 was the whole history.
+
+  Taken from a real page (2026-08-21), and in release-date order like one — the
+  ordering is the reason this page is a slice rather than a recent-watches feed.
+  The same page on a heavier account: Letterboxd offers a page 2 we are not
+  allowed to fetch, so this one is 72 films of a much longer history.
+-->
+<html lang="en">
+  <head><title>Films &bull; Letterboxd</title></head>
+  <body>
+    <ul class="poster-list">
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="obsession-2025"
+             data-item-name="Obsession (2025)"
+             data-item-full-display-name="Obsession (2025)"></div>
+      </li>
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="still-walking"
+             data-item-name="Still Walking (2008)"
+             data-item-full-display-name="Still Walking (2008)"></div>
+      </li>
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="vertigo"
+             data-item-name="Vertigo (1958)"
+             data-item-full-display-name="Vertigo (1958)"></div>
+      </li>
+    </ul>
+    <div class="paginate-pages">
+      <ul>
+        <li class="paginate-page paginate-current"><span>1</span></li>
+        <li class="paginate-page"><a href="/somebody/films/page/2/">2</a></li>
+        <li class="paginate-page unseen-pages">&hellip;</li>
+        <li class="paginate-page"><a href="/somebody/films/page/48/">48</a></li>
+      </ul>
+    </div>
+  </body>
+</html>

@@ -186,8 +186,8 @@ class RoundsTest < BoxdTest
     assert_equal "decided", round.refresh.state
   end
 
-  # The one route we ask, and the reason it's the only one: the feed is ordered
-  # by when things were logged, so it answers for a film of any age.
+  # The feed is asked first, and the reason it's first: it is ordered by when
+  # things were logged, so it answers for a film of any age.
   def test_the_feed_closes_a_round_everyone_has_logged
     round = decided_round
     film = Film[round.winning_film_id]
@@ -200,25 +200,90 @@ class RoundsTest < BoxdTest
     assert_equal "watched", round.refresh.state
   end
 
-  # A feed with other films in it is an answer about this one: they haven't
-  # watched it, and the round stays open.
-  def test_a_feed_without_the_film_holds_the_round_open
+  # A feed with other films in it is not an answer about this one, now that a
+  # rating can be the whole record of a watch: neither page has it, so the round
+  # stays open.
+  def test_neither_page_having_the_film_holds_the_round_open
     round = decided_round
+    others = @club.linked_members.to_h { |u| [u.letterboxd_username, ["something-else"]] }
 
-    stub_recent_logs(@club.linked_members.to_h { |u| [u.letterboxd_username, ["something-else"]] }) do
+    stub_recent_logs(others, rated: others) do
       Rounds.check_logs!(round)
     end
 
     assert_equal "decided", round.refresh.state
   end
 
-  # An account with nothing logged at all has no feed — a 404, which means they
-  # haven't watched it rather than that anything is broken.
-  def test_a_member_with_no_feed_has_not_watched_it
+  # The blind spot this exists to close: rate a film and never log it and the
+  # feed never mentions it, while Letterboxd counts it watched all the same.
+  # Both members did that, so the round is finished and used not to know it.
+  def test_a_round_everyone_only_rated_still_closes
+    round = decided_round
+
+    stub_rated(@club.linked_members.map(&:letterboxd_username)) do
+      Rounds.check_logs!(round)
+    end
+
+    assert_equal "watched", round.refresh.state
+  end
+
+  # One of each, since a club is generally both kinds of member at once.
+  def test_a_logger_and_a_rater_between_them_close_a_round
+    round = decided_round
+    film = Film[round.winning_film_id]
+
+    stub_recent_logs({ @a.letterboxd_username => [film.slug] },
+                     rated: { @b.letterboxd_username => [film.slug] }) do
+      Rounds.check_logs!(round)
+    end
+
+    assert_equal "watched", round.refresh.state
+  end
+
+  # The films page costs a request, so it's only spent on somebody the feed
+  # couldn't answer for. A member who logged it is done at one.
+  def test_the_films_page_is_not_asked_about_a_member_the_feed_answered_for
+    round = decided_round
+    film = Film[round.winning_film_id]
+    asked = []
+
+    stub_method(Letterboxd, :recent_logs, ->(*) { [{ slug: film.slug, title: film.slug, year: nil }] }) do
+      stub_method(Letterboxd, :watched_films, lambda { |username|
+        asked << username
+        { entries: [], complete: true }
+      }) do
+        Rounds.check_logs!(round)
+      end
+    end
+
+    assert_equal "watched", round.refresh.state
+    assert_empty asked, "the feed already said yes for everybody"
+  end
+
+  # An account with nothing logged at all has no feed — a 404. That's a silence
+  # rather than an answer, so it falls through to the films page, and a member
+  # with neither hasn't watched it rather than anything being broken.
+  def test_a_member_with_no_feed_falls_through_to_their_films_page
+    round = decided_round
+    film = Film[round.winning_film_id]
+
+    stub_method(Letterboxd, :recent_logs, ->(*) { raise Letterboxd::NotFound, "no feed" }) do
+      stub_method(Letterboxd, :watched_films,
+                  ->(*) { { entries: [{ slug: film.slug, title: film.slug, year: nil }], complete: true } }) do
+        Rounds.check_logs!(round)
+      end
+    end
+
+    assert_equal "watched", round.refresh.state, "a 404 feed is not evidence they haven't watched it"
+  end
+
+  def test_a_member_with_neither_page_has_not_watched_it
     round = decided_round
 
     stub_method(Letterboxd, :recent_logs, ->(*) { raise Letterboxd::NotFound, "no feed" }) do
-      Rounds.check_logs!(round)
+      stub_method(Letterboxd, :watched_films, ->(*) { raise Letterboxd::NotFound, "no films page" }) do
+        Rounds.check_logs!(round)
+      end
     end
 
     assert_equal "decided", round.refresh.state

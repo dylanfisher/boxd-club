@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  Page 1 of /{user}/films/, cut down to what lib/letterboxd.rb reads: the same
+  LazyPoster components a watchlist carries, plus the pagination block that says
+  whether page 1 was the whole history.
+
+  Taken from a real page (2026-08-21), and in release-date order like one — the
+  ordering is the reason this page is a slice rather than a recent-watches feed.
+  Still Walking is the point of the fixture: on the account this came from it was
+  rated and never logged, so it is in here and absent from the RSS feed.
+-->
+<html lang="en">
+  <head><title>Films &bull; Letterboxd</title></head>
+  <body>
+    <ul class="poster-list">
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="obsession-2025"
+             data-item-name="Obsession (2025)"
+             data-item-full-display-name="Obsession (2025)"></div>
+      </li>
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="still-walking"
+             data-item-name="Still Walking (2008)"
+             data-item-full-display-name="Still Walking (2008)"></div>
+      </li>
+      <li>
+        <div class="react-component" data-component-class="LazyPoster"
+             data-item-slug="vertigo"
+             data-item-name="Vertigo (1958)"
+             data-item-full-display-name="Vertigo (1958)"></div>
+      </li>
+    </ul>
+  </body>
+</html>

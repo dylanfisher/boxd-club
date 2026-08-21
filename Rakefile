@@ -126,8 +126,9 @@ task :seen, %i[slug] do |_t, args|
   list_size = DB[:club_list_entries].where(club_id: club.id).count
   abort "no list cached for #{club.slug} — try: rake refresh" if list_size.zero?
 
-  # One request each, at the interactive pace: you asked for it by hand, so it
-  # doesn't sit through the nightly job's staggers.
+  # Two requests each — the feed and the films page — at the interactive pace:
+  # you asked for it by hand, so it doesn't sit through the nightly job's
+  # staggers.
   users.each do |u|
     Letterboxd.refresh_watched!(u)
     Letterboxd.pause(Letterboxd::PACE.fetch(:interactive))

@@ -193,10 +193,11 @@ module Rounds
     end
   end
 
-  # Asks Letterboxd who has logged the winner yet. One request per member who
-  # hasn't been seen logging it, so this shrinks as people watch it — and once
-  # somebody is recorded we never ask about them again. Unattended, those
-  # requests are spread out at LOG_CHECK_STAGGER rather than made back to back.
+  # Asks Letterboxd who has watched the winner yet. Up to two requests per
+  # member who hasn't been seen watching it, so this shrinks as people get to it
+  # — and once somebody is recorded we never ask about them again. Unattended,
+  # those requests are spread out at LOG_CHECK_STAGGER rather than made back to
+  # back.
   def check_logs!(round, pace: :interactive, deliver: :now)
     film = Film[round.winning_film_id]
     return nil if film.nil?
@@ -224,12 +225,16 @@ module Rounds
 
     pending.shuffle.each_with_index do |user, i|
       Letterboxd.pause(gap) if background || i.positive?
-      next unless watched?(user, film)
+      how = watched_how(user, film, pace: pace)
+      next if how.nil?
 
       DB[:watch_logs].insert_conflict.insert(
         round_id: round.id, user_id: user.id, detected_at: Time.now
       )
-      puts "[round] #{round.id}: #{user.letterboxd_username} logged #{film.title}"
+      # Which of the two answered, because they aren't equally good: a run full
+      # of `rated` means the fallback is carrying the club, and a member who
+      # only ever turns up that way is one whose old films we'd never catch.
+      puts "[round] #{round.id}: #{user.letterboxd_username} #{how} #{film.title}"
     rescue *Letterboxd::TRANSPORT_ERRORS => e
       warn "[round] #{round.id}: log check for #{user.letterboxd_username} failed: #{e.class}: #{e.message}"
     end
@@ -239,21 +244,56 @@ module Rounds
     mark_watched!(round, deliver: deliver)
   end
 
-  # Has this member logged the film? One request, to the RSS feed.
+  # Has this member watched the film, and how did we find out? Their feed first,
+  # and their films page only if the feed doesn't have it.
   #
-  # The feed is the only route Letterboxd leaves open that is ordered by when
-  # things were logged rather than by release date, so it answers whatever the
-  # film's age — which is the whole point for a club working through a list of
-  # classics. It carries about 50 entries, weeks of logging for most people and
-  # comfortably longer than the round we're asking about.
+  # The feed first because it is the only route Letterboxd leaves open that is
+  # ordered by when things were logged rather than by release date, so it
+  # answers whatever the film's age — which is the whole point for a club
+  # working through a list of classics. It carries about 50 entries, weeks of
+  # logging for most people and comfortably longer than the round we're asking
+  # about. A yes stops there, so the common case is still one request and the
+  # second is only ever spent on somebody we were otherwise about to keep the
+  # whole club waiting for.
   #
-  # A member with nothing logged at all has no feed, which is a 404: they
-  # haven't watched it. Anything else Letterboxd does wrong is left to the
-  # caller, which logs it and moves on to the next member — so a challenge
-  # costs the rest of the club's requests too, and the round waits for the
-  # next run either way.
-  def watched?(user, film)
+  # The films page second because a rating is not a diary entry. Rate a film
+  # four stars and never log it and the feed never mentions it, while
+  # Letterboxd counts it watched and lists it there — so that member used to
+  # hold the round open indefinitely, and a club would sit on a film everyone
+  # had seen. It's a weaker answer than the feed: release-date ordered and cut
+  # off after 72 films, so a member with a long history watching an old film
+  # can be genuinely rated and genuinely missing from it. That's survivable
+  # here in a way it wouldn't be if this could say no — it can't. A nil is
+  # already "nobody has seen them watch it yet", which the next run asks again
+  # about, so the page only ever turns a not-yet into a yes.
+  #
+  # A member with nothing logged at all has no feed, which is a 404. That isn't
+  # an answer, only a silence — they may have rated plenty — so it falls
+  # through rather than settling for no. Anything else Letterboxd does wrong is
+  # left to the caller, which logs it and moves on to the next member: a
+  # challenge on the feed doesn't earn a second request against a site that has
+  # just refused the first, and the round waits for the next run either way.
+  #
+  # Returns :logged, :rated, or nil — the first two are the words that end up in
+  # the log, so the run says which route closed it.
+  def watched_how(user, film, pace: :interactive)
+    return :logged if logged?(user, film)
+
+    # The two land back to back against one member, so they get the same gap
+    # any two pages of a walk would.
+    Letterboxd.pause(Letterboxd::PACE.fetch(pace))
+    :rated if rated?(user, film)
+  end
+
+  def logged?(user, film)
     Letterboxd.recent_logs(user.letterboxd_username).any? { |e| e[:slug] == film.slug }
+  rescue Letterboxd::NotFound
+    false
+  end
+
+  def rated?(user, film)
+    Letterboxd.watched_films(user.letterboxd_username)[:entries]
+              .any? { |e| e[:slug] == film.slug }
   rescue Letterboxd::NotFound
     false
   end

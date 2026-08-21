@@ -8,6 +8,7 @@
 #   film_details(slug)     /film/{slug}/                   — director, rating, TMDB id
 #   avatar(user)           /{user}/watchlist/page/1/       — their profile picture
 #   recent_logs(user)      /{user}/rss/                    — what they've watched lately
+#   watched_films(user)    /{user}/films/                  — what they've watched, page 1
 #   from_csv(io)           watchlist.csv from an account export
 #
 # Note which page `avatar` reads: the obvious one, /{user}/, is behind a
@@ -22,13 +23,30 @@
 #
 # Note the slug's year and the display year can disagree; the display name wins.
 #
-# Watch history comes from two places and nowhere else: an uploaded watched.csv,
-# and the RSS feed. There is no third route worth having. /{user}/films/ sorts by
-# release date rather than by when anything was logged, and every form of it that
-# would re-sort or paginate is challenged; /{user}/film/{slug}/ answers per film,
-# but 404s for plenty of films people have genuinely watched (of twelve an
-# account's own watched.csv listed, three came back 404 — measured 2026-08-10),
-# so it costs a request each to be wrong. Both are gone.
+# Watch history comes from three places: an uploaded watched.csv, the RSS feed,
+# and the first page of /{user}/films/.
+#
+# The films page is in because it is the only one of the three that sees a film
+# somebody rated without ever logging a diary entry — and a rating marks a film
+# watched, so those are real. Measured 2026-08-21 on an account with seven
+# ratings and no diary: the feed came back an empty <channel>, the films page
+# listed all seven. Its limits are real and survivable. It sorts by release date
+# rather than by when anything was logged, and page 2 onwards is challenged, so
+# a heavy user gives up their 72 newest-released films and no more — but that's
+# 72 true positives a request, and lib/seen.rb only ever promotes, so reading
+# half a history costs nothing. The `.paginate-pages` block says which we got:
+# no such block means the account has 72 films or fewer and we read the lot.
+#
+# Every re-sort of it is still shut — /page/2/, /by/rated-date/, /films/ratings/
+# and /films/diary/ are all 403 behind a Cloudflare interstitial (re-checked
+# 2026-08-21) — and so is the one page that would date a rating rather than just
+# report it: /{user}/activity/ is a 200 shell whose contents come from
+# /ajax/activity-pagination/{user}/, which is challenged, as is /{user}/ itself.
+#
+# /{user}/film/{slug}/ answers per film, but 404s for plenty of films people
+# have genuinely watched (of twelve an account's own watched.csv listed, three
+# came back 404 — measured 2026-08-10), so it costs a request each to be wrong.
+# That one is gone.
 
 require "net/http"
 require "openssl"
@@ -193,6 +211,24 @@ module Letterboxd
 
   def child_text(node, name)
     node.at_xpath("./*[local-name()='#{name}']")&.text.to_s.strip
+  end
+
+  # The first page of the films a member has watched, and whether that was all
+  # of them.
+  #
+  # The companion to `recent_logs` rather than a duplicate of it: this is the
+  # only route that sees a film somebody rated without logging a diary entry,
+  # which never reaches the feed at all. Ordered by release date, so it is not a
+  # window on what they've been watching lately — it's a slice of the whole
+  # history weighted towards new releases, which is the half the feed is worst
+  # at, and worth a request for exactly that reason.
+  #
+  # `complete` is false when Letterboxd offered a page 2 we aren't allowed to
+  # fetch. It only decides what the log line says: every entry here is watched
+  # either way, and a short read is still all yeses.
+  def watched_films(username)
+    doc = Nokogiri::HTML(get("#{BASE}/#{username}/films/"))
+    { entries: parse_entries(doc), complete: doc.at_css(".paginate-pages").nil? }
   end
 
   def walk(base_path, pace: :interactive)
@@ -572,10 +608,10 @@ module Letterboxd
     # dies halfway doesn't die on the same half twice.
     jobs = due.shuffle.map { |u| -> { refresh_user!(u, pace: pace) } } +
            clubs.shuffle.map { |c| -> { refresh_list!(c, pace: pace) } } +
-           # One request each, so these run every time rather than on a
+           # Two requests each, so these run every time rather than on a
            # freshness clock: a member's feed is the cheapest seen data there
            # is, and a night missed is a week of logging we never pick up.
-           watched_users.shuffle.map { |u| -> { refresh_watched!(u) } }
+           watched_users.shuffle.map { |u| -> { refresh_watched!(u, pace: pace) } }
 
     jobs.each_with_index do |job, i|
       # The stagger is the whole point: one member's watchlist finishes, then
@@ -651,40 +687,66 @@ module Letterboxd
     nil
   end
 
-  # One request: whatever the member has logged lately, off their feed and
-  # straight into the seen cache. Cheap enough to do every run, and it keeps a
-  # club's list filtered against what people are watching now.
+  # Two requests: whatever the member has logged lately, off their feed, and the
+  # first page of their watched films, which is the only place a rating with no
+  # diary entry behind it turns up. Both land in the same seen cache. Cheap
+  # enough to do every run, and it keeps a club's list filtered against what
+  # people are actually watching.
   #
-  # The feed reaches back about 50 entries, so nightly runs cover everything
-  # short of somebody logging fifty films in a day. What it can't reach back to
-  # is the history they had before joining — that's what the import is for.
-  def refresh_watched!(user)
-    entries = recent_logs(user.letterboxd_username)
+  # They answer different questions and neither subsumes the other. The feed
+  # reaches back about 50 entries ordered by when they were logged, so nightly
+  # runs cover everything short of somebody logging fifty films in a day, at any
+  # age of film — but it is blind to a rating on its own. The films page sees
+  # those, and has no recency at all: it returns much the same slice night after
+  # night until the member watches something newly released. Neither reaches the
+  # history they had before joining; that's what the import is for.
+  #
+  # Fetched independently so a challenge on one still banks the other, and
+  # merged on slug, since a film they logged *and* rated is in both.
+  def refresh_watched!(user, pace: :interactive)
+    username = user.letterboxd_username
+
+    logged = fetch_watched(user, "feed at /#{username}/rss/") { recent_logs(username) }
+    pause(PACE.fetch(pace))
+    films = fetch_watched(user, "films page at /#{username}/films/") { watched_films(username) }
+
+    # Both refused, and both have already said so. Nothing to add.
+    return nil if logged.nil? && films.nil?
+
+    entries = (logged.to_a + (films ? films[:entries] : [])).uniq { |e| e[:slug] }
 
     if entries.empty?
-      # Either they've logged nothing, or the feed moved under us. Say so: this
-      # is the cheapest seen data there is, and it would otherwise go quiet for
-      # good without a line in the log.
-      warn "[fetch] #{user.email} (#{user.letterboxd_username}): 0 recently watched — " \
-           "nothing logged, or the feed changed shape."
+      # Two pages that both answered, both empty: they've logged and rated
+      # nothing, or both changed shape under us. Say so, because this is the
+      # cheapest seen data there is and would otherwise go quiet for good.
+      warn "[fetch] #{user.email} (#{username}): 0 watched — " \
+           "nothing logged or rated, or both pages changed shape."
       return nil
     end
 
     count = store_watched!(user, entries)
-    puts "[fetch] #{user.email} (#{user.letterboxd_username}): #{count} recently watched"
+    short = films && !films[:complete] ? " (films page cut off after page 1)" : ""
+    puts "[fetch] #{user.email} (#{username}): #{count} watched#{short}"
     count
+  end
+
+  # Runs one of the two, turning every way Letterboxd can refuse into nil and a
+  # line in the log. Nil rather than an exception because the two are
+  # independent: a challenged films page mustn't throw away a feed we've already
+  # read, and neither is worth taking the night's other work down for.
+  def fetch_watched(user, what)
+    yield
   rescue NotFound
-    # A renamed or deleted account — or a member who has logged nothing at all,
-    # who has no feed to serve. Neither is worth taking the night's other work
-    # down for, and a renamed account's other jobs are skipped by the same 404.
-    warn "[fetch] #{user.email}: no feed at /#{user.letterboxd_username}/rss/ — " \
-         "renamed account, or nothing logged yet"
+    # A renamed or deleted account — or, for the feed, a member who has logged
+    # nothing at all and so has no feed to serve. A renamed account's other jobs
+    # are skipped by the same 404.
+    warn "[fetch] #{user.email}: no #{what} — renamed account, or nothing there yet"
     nil
   rescue RateLimited => e
-    warn "[fetch] #{user.email}: watched list rate-limited, skipping — #{e.message}"
+    warn "[fetch] #{user.email}: #{what} rate-limited, skipping — #{e.message}"
     nil
   rescue *TRANSPORT_ERRORS => e
-    warn "[fetch] #{user.email}: watched list #{e.class}: #{e.message}"
+    warn "[fetch] #{user.email}: #{what} #{e.class}: #{e.message}"
     nil
   end
 
