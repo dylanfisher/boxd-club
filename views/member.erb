@@ -5,7 +5,7 @@
     so the avatar is clickable too. Someone who hasn't set a username yet gets
     the same row minus the link, so a half-set-up club doesn't look broken. %>
 <% if user.linked? %>
-  <a class="member" href="<%= user.letterboxd_url %>" target="letterboxd"><%
+  <a class="member" href="<%= user.letterboxd_url %>" target="_blank"><%
     %><%== render("avatar", locals: { user: user }) %><%
     %><span class="member-name"><%= user.letterboxd_username %></span><%
   %></a>

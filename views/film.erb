@@ -6,24 +6,16 @@
     rule in layout.erb). Anything interactive sitting in the same row — the drag
     handle, the rank menu — lifts itself back above it.
 
-    Every link that leaves the site targets the same named window, so a run of
-    film titles lands in one Letterboxd tab instead of a dozen, and the ballot
-    you were filling in is still sitting where you left it.
-
-    No rel="noopener", and that's deliberate rather than an oversight: noopener
-    forces a *fresh* browsing context and ignores the target name, so adding it
-    gives you a new tab per click and no shared tab at all. The cost is that
-    letterboxd.com pages opened this way can see window.opener. They can't read
-    our page — cross-origin — only navigate it, and Letterboxd is the one third
-    party this whole app is built on. Put the rel back if that trade ever stops
-    being worth a tidy tab bar. %>
+    Every link that leaves the site opens in a new tab, so the ballot you were
+    filling in is still sitting where you left it. Each click gets its own tab
+    rather than reusing one named Letterboxd window. %>
 <% big = defined?(big) && big %>
 <% if film.poster_url %>
   <img class="poster<%= big ? " big" : "" %>" src="<%= film.poster_url %>" alt=""
        loading="lazy" width="<%= big ? 70 : 46 %>" height="<%= big ? 105 : 69 %>">
 <% end %>
 <span class="title">
-  <a class="stretched" href="<%= film.letterboxd_url %>" target="letterboxd"><%= film.title %></a><% if film.year %>
+  <a class="stretched" href="<%= film.letterboxd_url %>" target="_blank"><%= film.title %></a><% if film.year %>
     <span class="year"><%= film.year %></span><% end %>
   <br>
   <span class="meta">

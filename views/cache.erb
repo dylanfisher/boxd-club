@@ -17,7 +17,7 @@
     on a schedule and keep what we read: the films on each member's watchlist,
     which films they've already watched, a little metadata for the films that
     reach a ballot, and a copy of each member's profile picture. Ballots are built from this copy, never from a live request.
-    <a href="https://letterboxd.com/" target="letterboxd">Letterboxd</a> is always
+    <a href="https://letterboxd.com/" target="_blank">Letterboxd</a> is always
     the source of truth &mdash; if something below is wrong, it only means we
     haven't read it again yet. Everything is listed newest first.
   </p>
@@ -62,7 +62,7 @@
         <%== render("avatar", locals: { user: row[:user] }) %>
         <span class="title">
           <% if row[:user].linked? %>
-            <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="letterboxd"><%= row[:user].letterboxd_username %></a>
+            <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="_blank"><%= row[:user].letterboxd_username %></a>
           <% else %>
             <%= row[:user].display_name %>
           <% end %>
@@ -107,7 +107,7 @@
           <%== render("avatar", locals: { user: row[:user] }) %>
           <span class="title">
             <% if row[:user].linked? %>
-              <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="letterboxd"><%= row[:user].letterboxd_username %></a>
+              <a class="stretched" href="<%= row[:user].letterboxd_url %>" target="_blank"><%= row[:user].letterboxd_username %></a>
             <% else %>
               <%= row[:user].display_name %>
             <% end %>

@@ -60,7 +60,7 @@
         <%== csrf_tag("/admin/clubs/#{club.slug}/refetch-list") %>
         <label>The club's list</label>
         <p class="dim">
-          <a href="<%= club.list_url %>" target="letterboxd"><%= club.list_owner %>/<%= club.list_slug %></a> ·
+          <a href="<%= club.list_url %>" target="_blank"><%= club.list_owner %>/<%= club.list_slug %></a> ·
           <%= club.list_size %> films ·
           <% fetched = club.list_fetched_at %>
           <%= fetched ? "read #{Fmt.ago(fetched)}" : "never read" %>
