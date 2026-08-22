@@ -62,6 +62,13 @@
       <% end %>
       Drag to reorder, or use the number menus. Top of the list is what you most
       want to watch.
+      <%# The starting order comes out of the matcher, and people read a
+          numbered list as a standing. Say it isn't one, but only before they
+          vote — after that the order on screen is their own ballot. %>
+      <% unless voted %>
+        The order you're starting from is arbitrary — it isn't a ranking, and it
+        isn't how anyone else has voted.
+      <% end %>
     </p>
 
     <form method="post" action="<%= club.path %>/vote" id="ballot-form">
